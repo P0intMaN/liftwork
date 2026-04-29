@@ -1,0 +1,29 @@
+[project]
+name = "liftwork-api"
+version = "0.1.0"
+description = "Liftwork REST API and dashboard backend"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "liftwork-core",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.18",
+    "PyJWT>=2.10",
+    "bcrypt>=4.2",
+    "httpx>=0.28",
+    "redis>=5.2",
+    "arq>=0.26",
+    "opentelemetry-instrumentation-fastapi>=0.49b0",
+    "opentelemetry-instrumentation-httpx>=0.49b0",
+]
+
+[tool.uv.sources]
+liftwork-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/liftwork_api"]

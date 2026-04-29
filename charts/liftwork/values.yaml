@@ -1,0 +1,76 @@
+# --- Liftwork Helm values (skeleton) ---
+# Full templates land in Phase 6.
+
+global:
+  imageRegistry: ghcr.io
+  imagePullSecrets: []
+
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: p0intman/liftwork-api
+    tag: ""        # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+worker:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: p0intman/liftwork-worker
+    tag: ""
+    pullPolicy: IfNotPresent
+  concurrency: 4
+
+dashboard:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: p0intman/liftwork-dashboard
+    tag: ""
+    pullPolicy: IfNotPresent
+
+postgresql:
+  enabled: true     # set false to use externalDatabase
+  auth:
+    username: liftwork
+    password: ""    # required if enabled and no existingSecret
+    database: liftwork
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+
+externalDatabase:
+  url: ""           # postgresql+asyncpg://...
+
+externalRedis:
+  url: ""           # redis://...
+
+ingress:
+  enabled: false
+  className: ""
+  host: liftwork.example.com
+  tls: false
+
+serviceMonitor:
+  enabled: false
+
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: ""
+
+telemetry:
+  otlp:
+    endpoint: ""    # e.g. http://otel-collector:4317

@@ -1,0 +1,18 @@
+apiVersion: v2
+name: liftwork
+description: Plug-and-play Kubernetes build and deploy platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/P0intMaN/liftwork
+sources:
+  - https://github.com/P0intMaN/liftwork
+keywords:
+  - ci-cd
+  - deploy
+  - kubernetes
+  - paas
+  - buildkit
+maintainers:
+  - name: Pratheek
+    email: pratheek.builds@gmail.com

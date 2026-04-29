@@ -1,0 +1,24 @@
+[project]
+name = "liftwork-worker"
+version = "0.1.0"
+description = "Liftwork build and deploy worker (arq + asyncio)"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "liftwork-core",
+    "arq>=0.26",
+    "kubernetes>=31.0",
+    "jinja2>=3.1",
+    "PyYAML>=6.0",
+    "httpx>=0.28",
+]
+
+[tool.uv.sources]
+liftwork-core = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/liftwork_worker"]

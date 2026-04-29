@@ -1,0 +1,78 @@
+[project]
+name = "liftwork"
+version = "0.1.0"
+description = "Plug-and-play Kubernetes build and deploy platform"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Pratheek", email = "pratheek.builds@gmail.com" }]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["apps/api", "apps/worker", "packages/core"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.7",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "pre-commit>=4.0",
+    "httpx>=0.28",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["apps/api/src", "apps/worker/src", "packages/core/src"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "S",   # bandit
+    "C4",  # comprehensions
+    "ASYNC",
+    "RET",
+    "SIM",
+    "PL",
+]
+ignore = [
+    "S101",   # asserts ok in tests; per-file-ignore catches the rest
+    "PLR0913", # too many args - false positives in DI / FastAPI
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "PL", "ASYNC"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_redundant_casts = true
+disallow_untyped_decorators = false
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = [
+    "apps/api/tests",
+    "apps/worker/tests",
+    "packages/core/tests",
+]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
+
+[tool.coverage.run]
+branch = true
+source = ["liftwork_api", "liftwork_worker", "liftwork_core"]
