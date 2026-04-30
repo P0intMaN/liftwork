@@ -17,7 +17,8 @@ htmlcov/
 coverage.xml
 *.egg-info/
 dist/
-build/
+/build/
+**/build-output/
 
 # uv
 .python-version.local

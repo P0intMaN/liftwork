@@ -1,7 +1,7 @@
 [project]
 name = "liftwork-core"
 version = "0.1.0"
-description = "Liftwork shared core: db, telemetry, models, settings, security"
+description = "Liftwork shared core: db, telemetry, models, settings, security, build, registry"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }
 dependencies = [
@@ -13,6 +13,9 @@ dependencies = [
     "structlog>=24.4",
     "bcrypt>=4.2",
     "PyJWT>=2.10",
+    "jinja2>=3.1",
+    "PyYAML>=6.0",
+    "httpx>=0.28",
     "opentelemetry-api>=1.28",
     "opentelemetry-sdk>=1.28",
     "opentelemetry-exporter-otlp>=1.28",

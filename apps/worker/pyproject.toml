@@ -11,6 +11,7 @@ dependencies = [
     "jinja2>=3.1",
     "PyYAML>=6.0",
     "httpx>=0.28",
+    "anyio>=4.6",
 ]
 
 [tool.uv.sources]

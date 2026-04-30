@@ -1,0 +1,9 @@
+# ---------------------------------------------------------------------------
+# Liftwork "static" template: the repo provided its own Dockerfile.
+# This file should never be rendered — it exists as a defensive fallback
+# that errors out clearly if the orchestrator picks the wrong template.
+# ---------------------------------------------------------------------------
+# IF YOU SEE THIS, the build picked the wrong path. The repo committed a
+# Dockerfile but liftwork rendered the static fallback instead. Open an issue.
+FROM busybox
+RUN echo "liftwork: invalid template selection — repo had its own Dockerfile" && exit 1
