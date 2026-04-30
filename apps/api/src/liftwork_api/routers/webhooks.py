@@ -11,10 +11,11 @@ from __future__ import annotations
 from typing import Annotated
 
 import structlog
+from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from liftwork_api.dependencies import get_db, get_settings_dep
+from liftwork_api.dependencies import get_arq_pool, get_db, get_settings_dep
 from liftwork_api.schemas import WebhookAck
 from liftwork_core.config import Settings
 from liftwork_core.db.models import BuildSource
@@ -34,10 +35,11 @@ log = structlog.get_logger("liftwork.api.webhooks")
 
 
 @router.post("/github", response_model=WebhookAck)
-async def github_webhook(
+async def github_webhook(  # noqa: PLR0911
     request: Request,
     settings: Annotated[Settings, Depends(get_settings_dep)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    arq_pool: Annotated[ArqRedis, Depends(get_arq_pool)],
     x_hub_signature_256: Annotated[str | None, Header(alias="X-Hub-Signature-256")] = None,
     x_github_event: Annotated[str | None, Header(alias="X-GitHub-Event")] = None,
     x_github_delivery: Annotated[str | None, Header(alias="X-GitHub-Delivery")] = None,
@@ -130,6 +132,9 @@ async def github_webhook(
         commit_message=push.commit_message,
     )
     await session.commit()
+
+    await arq_pool.enqueue_job("run_build", build_run_id=str(run.id))
+
     log.info(
         "webhook.build_enqueued",
         build_id=str(run.id),

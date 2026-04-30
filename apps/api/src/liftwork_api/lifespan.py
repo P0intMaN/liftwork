@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import redis.asyncio as redis_asyncio
+from arq import create_pool
+from arq.connections import ArqRedis, RedisSettings
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -25,6 +27,7 @@ class AppState:
     engine: AsyncEngine
     session_factory: SessionFactory
     redis: redis_asyncio.Redis
+    arq_pool: ArqRedis
 
 
 def get_app_state(app: FastAPI) -> AppState:
@@ -52,12 +55,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         encoding="utf-8",
         decode_responses=True,
     )
+    arq_pool = await create_pool(RedisSettings.from_dsn(str(settings.redis.url)))
 
     app.state.liftwork = AppState(
         settings=settings,
         engine=engine,
         session_factory=session_factory,
         redis=redis_client,
+        arq_pool=arq_pool,
     )
 
     await _bootstrap_admin(session_factory, settings.bootstrap, log)
@@ -66,6 +71,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        await arq_pool.aclose()
         await redis_client.aclose()
         await engine.dispose()
         log.info("api_stopped")

@@ -1,20 +1,29 @@
-"""Read-only build endpoints. Triggering happens via webhook or POST below."""
+"""Build endpoints — list, trigger, get, follow logs."""
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import redis.asyncio as redis_asyncio
+from arq.connections import ArqRedis
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from liftwork_api.auth import CurrentUser
-from liftwork_api.dependencies import get_db
+from liftwork_api.dependencies import get_arq_pool, get_db, get_redis
 from liftwork_api.schemas import BuildEnqueuedResponse, BuildRunOut
 from liftwork_core.db.models import BuildSource
 from liftwork_core.repositories import ApplicationRepository, BuildRunRepository
 
 router = APIRouter(prefix="/applications/{application_id}/builds", tags=["builds"])
+
+_BUILD_CHANNEL_PREFIX = "liftwork:build:"
+_END_MARKER = "__LIFTWORK_END__"
+_HEARTBEAT_TIMEOUT = 15.0
 
 
 @router.get("", response_model=list[BuildRunOut])
@@ -38,6 +47,7 @@ async def trigger_build(
     application_id: UUID,
     _user: CurrentUser,
     session: Annotated[AsyncSession, Depends(get_db)],
+    arq_pool: Annotated[ArqRedis, Depends(get_arq_pool)],
 ) -> BuildEnqueuedResponse:
     """Manual trigger — re-build current HEAD of the configured default branch."""
     app = await ApplicationRepository(session).get_by_id(application_id)
@@ -46,7 +56,7 @@ async def trigger_build(
 
     repo = BuildRunRepository(session)
     # For a manual trigger we record a placeholder commit_sha; the worker will
-    # resolve HEAD via the GitHub App token once that path lands in Phase 4b.
+    # resolve HEAD via the GitHub App token in Phase 4b-2.
     run = await repo.create(
         application_id=app.id,
         commit_sha="HEAD",
@@ -54,6 +64,8 @@ async def trigger_build(
         source=BuildSource.manual,
     )
     await session.commit()
+
+    await arq_pool.enqueue_job("run_build", build_run_id=str(run.id))
     return BuildEnqueuedResponse(build_id=run.id, status=run.status.value)
 
 
@@ -70,3 +82,58 @@ async def get_build(
     if run is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="build not found")
     return BuildRunOut.model_validate(run)
+
+
+@detail_router.get(
+    "/{build_id}/logs",
+    summary="Server-Sent Events stream of live build logs",
+)
+async def stream_build_logs(
+    build_id: UUID,
+    request: Request,
+    _user: CurrentUser,
+    redis: Annotated[redis_asyncio.Redis, Depends(get_redis)],
+) -> StreamingResponse:
+    channel = f"{_BUILD_CHANNEL_PREFIX}{build_id}"
+
+    async def event_stream() -> AsyncIterator[bytes]:
+        pubsub = redis.pubsub()
+        await pubsub.subscribe(channel)
+        try:
+            yield f": subscribed {channel}\n\n".encode()
+            while True:
+                if await request.is_disconnected():
+                    return
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=_HEARTBEAT_TIMEOUT,
+                )
+                if message is None:
+                    yield b": keepalive\n\n"
+                    continue
+                payload = message.get("data")
+                if isinstance(payload, bytes):
+                    payload = payload.decode("utf-8", errors="replace")
+                if payload == _END_MARKER:
+                    yield b"event: end\ndata: complete\n\n"
+                    return
+                # Escape newlines per the SSE spec — multi-line frames need
+                # one `data:` line each. Worker emits one log line per call.
+                for line in str(payload).splitlines() or [""]:
+                    yield f"data: {line}\n".encode()
+                yield b"\n"
+        except asyncio.CancelledError:
+            raise
+        finally:
+            await pubsub.unsubscribe(channel)
+            await pubsub.aclose()  # type: ignore[no-untyped-call]
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

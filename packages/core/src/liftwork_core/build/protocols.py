@@ -8,7 +8,7 @@ so build logic stays portable.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field, SecretStr
 
@@ -52,6 +52,6 @@ class LogSink(Protocol):
 class BuildExecutor(Protocol):
     """Builds and (optionally) pushes a container image."""
 
-    name: str
+    name: ClassVar[str]
 
     async def build(self, ctx: BuildContext, *, log_sink: LogSink) -> BuildResult: ...

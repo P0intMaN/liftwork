@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, ClassVar, Protocol, runtime_checkable
 
 from liftwork_core.build.config import DeploySpec
 from liftwork_core.build.protocols import LogSink
@@ -50,7 +50,7 @@ class DeployResult:
 
 @runtime_checkable
 class DeployExecutor(Protocol):
-    name: str
+    name: ClassVar[str]
 
     async def apply_manifests(
         self,

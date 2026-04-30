@@ -1,21 +1,25 @@
-"""Worker entrypoint.
+"""Worker process entrypoint.
 
-Phase 0 ships a no-op worker that proves the import path and exposes a
-`WorkerSettings` arq class. Build/deploy job handlers land in Phase 4.
+Usage:
+    python -m liftwork_worker.main
+    # equivalent to:
+    arq liftwork_worker.arq_worker.WorkerSettings
+
+The latter is what `make dev-worker` runs.
 """
 
 from __future__ import annotations
 
-import asyncio
 import sys
 
-
-async def _noop() -> int:
-    return 0
+from arq.cli import cli
 
 
 def main() -> int:
-    return asyncio.run(_noop())
+    # Hand off to arq's CLI with our WorkerSettings dotted path.
+    sys.argv = [sys.argv[0], "liftwork_worker.arq_worker.WorkerSettings"]
+    cli()
+    return 0
 
 
 if __name__ == "__main__":
