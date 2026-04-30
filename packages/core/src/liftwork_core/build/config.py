@@ -41,6 +41,14 @@ class HealthCheck(BaseModel):
     period_seconds: int = 10
 
 
+class IngressSpec(BaseModel):
+    enabled: bool = False
+    host: str | None = None
+    class_name: str | None = None
+    annotations: dict[str, str] = Field(default_factory=dict)
+    tls_secret_name: str | None = None
+
+
 class DeploySpec(BaseModel):
     port: int = 8080
     replicas: int = 1
@@ -48,6 +56,7 @@ class DeploySpec(BaseModel):
     env: dict[str, str] = Field(default_factory=dict)
     resources: Resources = Field(default_factory=Resources)
     health_check: HealthCheck = Field(default_factory=HealthCheck)
+    ingress: IngressSpec = Field(default_factory=IngressSpec)
 
 
 class LiftworkConfig(BaseModel):

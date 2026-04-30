@@ -43,11 +43,9 @@ class BuildResult(BaseModel):
 class LogSink(Protocol):
     """Async log consumer. Executors call `write` for each line of output."""
 
-    async def write(self, line: str) -> None:
-        ...
+    async def write(self, line: str) -> None: ...
 
-    async def close(self) -> None:
-        ...
+    async def close(self) -> None: ...
 
 
 @runtime_checkable
@@ -56,5 +54,4 @@ class BuildExecutor(Protocol):
 
     name: str
 
-    async def build(self, ctx: BuildContext, *, log_sink: LogSink) -> BuildResult:
-        ...
+    async def build(self, ctx: BuildContext, *, log_sink: LogSink) -> BuildResult: ...

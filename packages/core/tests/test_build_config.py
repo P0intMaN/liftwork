@@ -34,6 +34,11 @@ def test_load_full_config(tmp_path: Path) -> None:
               env: { LOG_LEVEL: DEBUG }
               resources:
                 requests: { cpu: "200m", memory: "256Mi" }
+              ingress:
+                enabled: true
+                host: api.example.com
+                class_name: nginx
+                tls_secret_name: api-tls
             """
         ).strip(),
         encoding="utf-8",
@@ -46,6 +51,10 @@ def test_load_full_config(tmp_path: Path) -> None:
     assert cfg.deploy.port == 9000
     assert cfg.deploy.command == ["uvicorn", "main:app"]
     assert cfg.deploy.resources.requests.cpu == "200m"
+    assert cfg.deploy.ingress.enabled is True
+    assert cfg.deploy.ingress.host == "api.example.com"
+    assert cfg.deploy.ingress.class_name == "nginx"
+    assert cfg.deploy.ingress.tls_secret_name == "api-tls"
 
 
 def test_load_empty_file_returns_defaults(tmp_path: Path) -> None:
@@ -74,3 +83,9 @@ def test_unknown_language_raises(tmp_path: Path) -> None:
     p.write_text("language: cobol", encoding="utf-8")
     with pytest.raises(LiftworkConfigError, match="failed validation"):
         load_liftwork_config(p)
+
+
+def test_ingress_default_disabled() -> None:
+    cfg = LiftworkConfig()
+    assert cfg.deploy.ingress.enabled is False
+    assert cfg.deploy.ingress.host is None

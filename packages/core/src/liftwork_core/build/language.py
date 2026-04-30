@@ -8,6 +8,7 @@ explicit `language:` field, or by committing its own `Dockerfile`.
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -21,7 +22,7 @@ class Language(enum.StrEnum):
     ruby = "ruby"
     php = "php"
     dotnet = "dotnet"
-    static = "static"   # repo ships its own Dockerfile or is a static site
+    static = "static"  # repo ships its own Dockerfile or is a static site
     unknown = "unknown"
 
 
@@ -57,63 +58,95 @@ def _glob(root: Path, pattern: str) -> bool:
     return any(root.glob(pattern))
 
 
+def _detect_static(p: Path) -> DetectionResult | None:
+    sigs = _has(p, "Dockerfile", "Containerfile")
+    if sigs:
+        return DetectionResult(Language.static, PackageManager.none, sigs)
+    return None
+
+
+def _detect_python(p: Path) -> DetectionResult | None:
+    sigs = _has(p, "pyproject.toml", "requirements.txt", "Pipfile", "setup.py")
+    if not sigs:
+        return None
+    pm = PackageManager.pip
+    if (p / "uv.lock").exists():
+        pm = PackageManager.uv
+    elif (p / "poetry.lock").exists():
+        pm = PackageManager.poetry
+    return DetectionResult(Language.python, pm, sigs)
+
+
+def _detect_node(p: Path) -> DetectionResult | None:
+    if not (p / "package.json").exists():
+        return None
+    pm = PackageManager.npm
+    if (p / "pnpm-lock.yaml").exists():
+        pm = PackageManager.pnpm
+    elif (p / "yarn.lock").exists():
+        pm = PackageManager.yarn
+    return DetectionResult(Language.node, pm, ("package.json",))
+
+
+def _detect_go(p: Path) -> DetectionResult | None:
+    if (p / "go.mod").exists():
+        return DetectionResult(Language.go, PackageManager.none, ("go.mod",))
+    return None
+
+
+def _detect_rust(p: Path) -> DetectionResult | None:
+    if (p / "Cargo.toml").exists():
+        return DetectionResult(Language.rust, PackageManager.none, ("Cargo.toml",))
+    return None
+
+
+def _detect_java(p: Path) -> DetectionResult | None:
+    sigs = _has(p, "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle")
+    if sigs:
+        return DetectionResult(Language.java, PackageManager.none, sigs)
+    return None
+
+
+def _detect_ruby(p: Path) -> DetectionResult | None:
+    if (p / "Gemfile").exists():
+        return DetectionResult(Language.ruby, PackageManager.none, ("Gemfile",))
+    return None
+
+
+def _detect_php(p: Path) -> DetectionResult | None:
+    if (p / "composer.json").exists():
+        return DetectionResult(Language.php, PackageManager.none, ("composer.json",))
+    return None
+
+
+def _detect_dotnet(p: Path) -> DetectionResult | None:
+    if _glob(p, "*.csproj") or _glob(p, "*.sln") or _glob(p, "*.fsproj"):
+        return DetectionResult(Language.dotnet, PackageManager.none, ("csproj/sln",))
+    return None
+
+
+# Ordered detection chain — first non-None match wins.
+_DETECTORS: tuple[Callable[[Path], DetectionResult | None], ...] = (
+    _detect_static,
+    _detect_python,
+    _detect_node,
+    _detect_go,
+    _detect_rust,
+    _detect_java,
+    _detect_ruby,
+    _detect_php,
+    _detect_dotnet,
+)
+
+
 def detect_language(repo_root: Path) -> DetectionResult:
     """Inspect `repo_root` and return the most likely build language."""
     if not repo_root.exists() or not repo_root.is_dir():
         msg = f"repo_root does not exist or is not a directory: {repo_root}"
         raise ValueError(msg)
 
-    # User-authored Dockerfile always wins.
-    dockerfile_signals = _has(repo_root, "Dockerfile", "Containerfile")
-    if dockerfile_signals:
-        return DetectionResult(
-            language=Language.static,
-            package_manager=PackageManager.none,
-            signals=dockerfile_signals,
-        )
-
-    # Python
-    py_signals = _has(repo_root, "pyproject.toml", "requirements.txt", "Pipfile", "setup.py")
-    if py_signals:
-        pm = PackageManager.pip
-        if (repo_root / "uv.lock").exists():
-            pm = PackageManager.uv
-        elif (repo_root / "poetry.lock").exists():
-            pm = PackageManager.poetry
-        return DetectionResult(Language.python, pm, py_signals)
-
-    # Node
-    if (repo_root / "package.json").exists():
-        pm = PackageManager.npm
-        if (repo_root / "pnpm-lock.yaml").exists():
-            pm = PackageManager.pnpm
-        elif (repo_root / "yarn.lock").exists():
-            pm = PackageManager.yarn
-        return DetectionResult(Language.node, pm, ("package.json",))
-
-    # Go
-    if (repo_root / "go.mod").exists():
-        return DetectionResult(Language.go, PackageManager.none, ("go.mod",))
-
-    # Rust
-    if (repo_root / "Cargo.toml").exists():
-        return DetectionResult(Language.rust, PackageManager.none, ("Cargo.toml",))
-
-    # Java / JVM
-    java_signals = _has(repo_root, "pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle")
-    if java_signals:
-        return DetectionResult(Language.java, PackageManager.none, java_signals)
-
-    # Ruby
-    if (repo_root / "Gemfile").exists():
-        return DetectionResult(Language.ruby, PackageManager.none, ("Gemfile",))
-
-    # PHP
-    if (repo_root / "composer.json").exists():
-        return DetectionResult(Language.php, PackageManager.none, ("composer.json",))
-
-    # .NET
-    if _glob(repo_root, "*.csproj") or _glob(repo_root, "*.sln") or _glob(repo_root, "*.fsproj"):
-        return DetectionResult(Language.dotnet, PackageManager.none, ("csproj/sln",))
-
+    for detector in _DETECTORS:
+        result = detector(repo_root)
+        if result is not None:
+            return result
     return DetectionResult(Language.unknown)
