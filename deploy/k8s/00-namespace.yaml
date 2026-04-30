@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: liftwork
+  labels:
+    app.kubernetes.io/name: liftwork
+    app.kubernetes.io/managed-by: liftwork

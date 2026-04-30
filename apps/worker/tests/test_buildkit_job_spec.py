@@ -103,6 +103,39 @@ def test_job_spec_mounts_dockerfile_and_registry_creds() -> None:
     assert "buildkit-cache" in volumes
 
 
+def test_job_spec_insecure_skips_secret_and_adds_flag() -> None:
+    """Dev-mode in-cluster registry: no docker-config Secret, push over HTTP."""
+    spec = build_buildkit_job_spec(
+        JobSpecInputs(
+            build_id="b1",
+            repo_url="https://github.com/acme/api.git",
+            branch="main",
+            dockerfile_configmap="cm-b1",
+            image_ref="registry.liftwork.svc.cluster.local:5000/acme/api:main-abc",
+            registry_insecure=True,
+        )
+    )
+    pod_spec = spec["spec"]["template"]["spec"]
+    volume_names = {v["name"] for v in pod_spec["volumes"]}
+    assert "docker-config" not in volume_names
+    assert "dockerfile" in volume_names
+    assert "buildkit-cache" in volume_names
+
+    main = pod_spec["containers"][0]
+    mount_names = {m["name"] for m in main["volumeMounts"]}
+    assert "docker-config" not in mount_names
+
+    full_script = main["command"][-1]
+    assert (
+        "--output=type=image,"
+        "name=registry.liftwork.svc.cluster.local:5000/acme/api:main-abc,"
+        "push=true,registry.insecure=true"
+    ) in full_script
+
+    env_names = {e["name"] for e in main["env"]}
+    assert "DOCKER_CONFIG" not in env_names
+
+
 def test_job_spec_name_is_truncated_and_dns_safe() -> None:
     very_long_id = "x" * 200
     spec = build_buildkit_job_spec(

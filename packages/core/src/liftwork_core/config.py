@@ -21,6 +21,14 @@ class APISettings(BaseModel):
 class WorkerSettings(BaseModel):
     concurrency: int = 4
     health_port: int = 7879
+    # Executor selection. "mock" for unit tests + first-run dev; "kind"
+    # wires the real BuildKit-in-pod + K8s server-side-apply executors
+    # against the cluster identified by `k8s.kube_context` /
+    # `k8s.in_cluster`.
+    executor: Literal["mock", "kind"] = "mock"
+    builder_namespace: str = "liftwork"
+    builder_service_account: str = "liftwork-builder"
+    deploy_field_manager: str = "liftwork-controller"
 
 
 class DatabaseSettings(BaseModel):
@@ -53,6 +61,7 @@ class RegistrySettings(BaseModel):
     host: str = "ghcr.io"
     username: str | None = None
     token: SecretStr | None = None
+    insecure: bool = False  # set true for the dev in-cluster `registry:2`
 
 
 class GitHubAppSettings(BaseModel):

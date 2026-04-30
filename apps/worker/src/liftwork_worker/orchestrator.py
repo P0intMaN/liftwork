@@ -44,6 +44,9 @@ class BuildRequest:
     image_repository: str  # e.g. "p0intman/my-app"
     registry_host: str = "ghcr.io"
     push: bool = True
+    repo_url: str | None = None  # full URL — needed by in-cluster executors
+    build_id: str | None = None  # arq job id — used to name k8s resources
+    registry_insecure: bool = False  # set true for the dev in-cluster registry
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,10 @@ async def orchestrate_build(
             "liftwork.io/branch": request.branch,
             "liftwork.io/commit": request.commit_sha,
         },
+        repo_url=request.repo_url,
+        branch=request.branch,
+        build_id=request.build_id,
+        registry_insecure=request.registry_insecure,
     )
 
     result = await executor.build(build_ctx, log_sink=log_sink)

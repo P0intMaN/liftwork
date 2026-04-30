@@ -1,4 +1,4 @@
-.PHONY: help bootstrap install lint format typecheck test dev-api dev-worker dev-up dev-down migrate migrate-rev migrate-down clean
+.PHONY: help bootstrap install lint format typecheck test dev-api dev-worker dev-up dev-down migrate migrate-rev migrate-down kind-prereqs kind-down clean
 
 PNPM         ?= pnpm
 UV           ?= uv
@@ -20,6 +20,8 @@ help:
 	@echo "  make migrate          alembic upgrade head"
 	@echo "  make migrate-rev m=msg  alembic revision --autogenerate -m \"\$$m\""
 	@echo "  make migrate-down       alembic downgrade -1"
+	@echo "  make kind-prereqs       apply liftwork ns + RBAC + in-cluster registry, patch containerd"
+	@echo "  make kind-down          tear down the liftwork ns from kind"
 
 bootstrap: install
 	$(UV) run pre-commit install
@@ -63,6 +65,12 @@ migrate-rev:
 
 migrate-down:
 	$(UV) run alembic downgrade -1
+
+kind-prereqs:
+	bash scripts/setup-kind-registry.sh
+
+kind-down:
+	kubectl --context kind-kubedeploy-dev delete ns liftwork --ignore-not-found
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

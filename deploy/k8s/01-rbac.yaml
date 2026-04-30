@@ -1,0 +1,88 @@
+# RBAC for two distinct roles:
+#   * liftwork-builder — owns build Jobs + their ConfigMaps in the liftwork ns
+#   * liftwork-controller — owns Deployments / Services / Ingresses in *target*
+#     namespaces (cluster-scoped; bind to specific namespaces in production)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: liftwork-builder
+  namespace: liftwork
+  labels:
+    app.kubernetes.io/name: liftwork
+    app.kubernetes.io/component: builder
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: liftwork-builder
+  namespace: liftwork
+  labels:
+    app.kubernetes.io/name: liftwork
+rules:
+  - apiGroups: [""]
+    resources: [configmaps, pods, pods/log]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["batch"]
+    resources: [jobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: liftwork-builder
+  namespace: liftwork
+  labels:
+    app.kubernetes.io/name: liftwork
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: liftwork-builder
+subjects:
+  - kind: ServiceAccount
+    name: liftwork-builder
+    namespace: liftwork
+---
+# Cluster-scoped role for the controller — owns Deployments/Services/Ingresses
+# in any target namespace. In production, replace this with namespace-scoped
+# RoleBindings to whichever namespaces a given Cluster row covers.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: liftwork-controller
+  namespace: liftwork
+  labels:
+    app.kubernetes.io/name: liftwork
+    app.kubernetes.io/component: controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: liftwork-controller
+  labels:
+    app.kubernetes.io/name: liftwork
+rules:
+  - apiGroups: [""]
+    resources: [namespaces, services, configmaps, secrets, events]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["apps"]
+    resources: [deployments, replicasets]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: ["networking.k8s.io"]
+    resources: [ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: liftwork-controller
+  labels:
+    app.kubernetes.io/name: liftwork
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: liftwork-controller
+subjects:
+  - kind: ServiceAccount
+    name: liftwork-controller
+    namespace: liftwork

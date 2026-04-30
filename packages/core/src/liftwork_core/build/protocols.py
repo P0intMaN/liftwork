@@ -30,6 +30,12 @@ class BuildContext(BaseModel):
     push: bool = True
     registry_auth: RegistryAuth | None = None
     labels: dict[str, str] = Field(default_factory=dict)
+    # Set by the orchestrator. In-cluster executors (BuildKit Job) use
+    # these to wire the init-container git clone; local executors ignore.
+    repo_url: str | None = None
+    branch: str | None = None
+    build_id: str | None = None
+    registry_insecure: bool = False
 
 
 class BuildResult(BaseModel):

@@ -38,6 +38,7 @@ from liftwork_core.repositories import (
     ClusterRepository,
 )
 from liftwork_worker.deploy.orchestrator import orchestrate_deploy
+from liftwork_worker.git import GitCloneError, shallow_clone
 from liftwork_worker.log_sinks import InMemoryLogSink, TeeLogSink
 from liftwork_worker.orchestrator import BuildRequest, orchestrate_build
 from liftwork_worker.redis_log import (
@@ -74,26 +75,55 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
             return {"status": "missing"}
 
         await sink.write(f"[build] {run.commit_sha[:7]}@{run.branch} app={application.slug}")
-        # Phase 4b-1 stub: the real shallow_clone is wired in 4b-2. For now
-        # we drop a placeholder `Dockerfile` so the orchestrator's language
-        # detector resolves to `static` and hands a Dockerfile path to the
-        # (mock) executor — which ignores its contents. Real clones in
-        # 4b-2 will populate the workspace from the GitHub App token path.
-        (workspace / "Dockerfile").write_text(
-            "# placeholder — replaced by real clone in Phase 4b-2\nFROM scratch\n",
-            encoding="utf-8",
-        )
+
+        is_real = state.settings.worker.executor != "mock"
+        if is_real:
+            # Real path: clone the repo so the orchestrator's language
+            # detector + Dockerfile renderer have files to work with. The
+            # BuildKit Job re-clones inside its init container (wasteful
+            # but simple — workspace tarball mounting comes later).
+            try:
+                await shallow_clone(
+                    repo_url=application.repo_url,
+                    branch=run.branch,
+                    target_dir=workspace / "repo",
+                    log_sink=sink,
+                )
+                workspace_for_orch = workspace / "repo"
+            except GitCloneError as exc:
+                await _mark_build(
+                    state,
+                    run_id,
+                    status=BuildStatus.failed,
+                    error=f"git clone failed: {exc}",
+                    log_excerpt=archive_sink.excerpt(),
+                )
+                await sink.write(f"[build] git clone failed — {exc}")
+                return {"status": "failed", "error": str(exc)}
+        else:
+            # Mock path: the mock executor ignores the workspace; we just
+            # need *something* the orchestrator's language detector can
+            # resolve. A bare `Dockerfile` makes it pick `static`.
+            (workspace / "Dockerfile").write_text(
+                "# placeholder — mock executor mode\nFROM scratch\n",
+                encoding="utf-8",
+            )
+            workspace_for_orch = workspace
+
         try:
             result = await orchestrate_build(
                 BuildRequest(
-                    workspace=workspace,
+                    workspace=workspace_for_orch,
                     repo_owner=application.repo_owner,
                     repo_name=application.repo_name,
                     branch=run.branch,
                     commit_sha=run.commit_sha,
                     image_repository=application.image_repository,
                     registry_host=state.settings.registry.host,
-                    push=False,  # Phase 4b-1 — mock executor; no real push
+                    push=is_real,
+                    repo_url=application.repo_url,
+                    build_id=str(run_id),
+                    registry_insecure=state.settings.registry.insecure,
                 ),
                 executor=state.build_executor,
                 log_sink=sink,
