@@ -55,13 +55,27 @@ class RegistrySettings(BaseModel):
     token: SecretStr | None = None
 
 
-class GitHubSettings(BaseModel):
+class GitHubAppSettings(BaseModel):
+    app_id: str | None = None
+    private_key: SecretStr | None = None  # full PEM contents
     webhook_secret: SecretStr | None = None
+    installation_id: int | None = None  # optional default
+
+    @property
+    def is_configured(self) -> bool:
+        return all((self.app_id, self.private_key, self.webhook_secret))
 
 
 class K8sSettings(BaseModel):
     kube_context: str | None = None
     in_cluster: bool = False
+
+
+class BootstrapSettings(BaseModel):
+    """Optional first-run admin seeding. Both fields required to take effect."""
+
+    admin_email: str | None = None
+    admin_password: SecretStr | None = None
 
 
 class Settings(BaseSettings):
@@ -84,8 +98,9 @@ class Settings(BaseSettings):
     telemetry: TelemetrySettings = Field(default_factory=TelemetrySettings)
     jwt: JwtSettings
     registry: RegistrySettings = Field(default_factory=RegistrySettings)
-    github: GitHubSettings = Field(default_factory=GitHubSettings)
+    github: GitHubAppSettings = Field(default_factory=GitHubAppSettings)
     k8s: K8sSettings = Field(default_factory=K8sSettings)
+    bootstrap: BootstrapSettings = Field(default_factory=BootstrapSettings)
 
     @property
     def use_json_logs(self) -> bool:

@@ -11,9 +11,11 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from liftwork_api import __version__
-from liftwork_core.config import Settings, get_settings
+from liftwork_core.config import BootstrapSettings, Settings, get_settings
 from liftwork_core.db import SessionFactory, make_engine, make_session_factory
 from liftwork_core.logging import configure_logging, get_logger
+from liftwork_core.repositories import UserRepository
+from liftwork_core.security import hash_password
 from liftwork_core.telemetry import configure_telemetry
 
 
@@ -58,6 +60,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         redis=redis_client,
     )
 
+    await _bootstrap_admin(session_factory, settings.bootstrap, log)
+
     log.info("api_started", env=settings.env, version=__version__)
     try:
         yield
@@ -65,3 +69,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await redis_client.aclose()
         await engine.dispose()
         log.info("api_stopped")
+
+
+async def _bootstrap_admin(
+    session_factory: SessionFactory,
+    bootstrap: BootstrapSettings,
+    log: object,
+) -> None:
+    """Seed an initial admin user the first time liftwork boots.
+
+    No-op unless both `bootstrap.admin_email` and `bootstrap.admin_password`
+    are set, AND the users table is empty.
+    """
+    if bootstrap.admin_email is None or bootstrap.admin_password is None:
+        return
+    async with session_factory() as session:
+        repo = UserRepository(session)
+        if await repo.count() > 0:
+            return
+        await repo.create(
+            email=bootstrap.admin_email,
+            password_hash=hash_password(bootstrap.admin_password.get_secret_value()),
+            role="admin",
+        )
+        await session.commit()
+    log.info("admin_bootstrapped", email=bootstrap.admin_email)  # type: ignore[attr-defined]

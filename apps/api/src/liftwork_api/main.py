@@ -13,7 +13,15 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from liftwork_api import __version__
 from liftwork_api.lifespan import lifespan
 from liftwork_api.middleware import RequestContextMiddleware
-from liftwork_api.routers import health, metrics
+from liftwork_api.routers import (
+    applications,
+    auth,
+    builds,
+    clusters,
+    health,
+    metrics,
+    webhooks,
+)
 
 
 def create_app() -> FastAPI:
@@ -29,6 +37,12 @@ def create_app() -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(metrics.router)
+    app.include_router(auth.router)
+    app.include_router(clusters.router)
+    app.include_router(applications.router)
+    app.include_router(builds.router)
+    app.include_router(builds.detail_router)
+    app.include_router(webhooks.router)
 
     FastAPIInstrumentor.instrument_app(app)
     return app

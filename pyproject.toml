@@ -23,6 +23,7 @@ dev = [
     "pre-commit>=4.0",
     "httpx>=0.28",
     "types-PyYAML>=6.0",
+    "asgi-lifespan>=2.1",
 ]
 
 [tool.ruff]
@@ -52,6 +53,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S", "PL", "ASYNC"]
+# webhook handlers naturally have many ack-shaped early returns
+"apps/api/src/liftwork_api/routers/webhooks.py" = ["PLR0911"]
 
 [tool.mypy]
 python_version = "3.12"
