@@ -1,15 +1,19 @@
-"""FastAPI application entrypoint.
+"""FastAPI application factory.
 
-Phase 0 ships only a liveness/readiness surface and a service identity
-endpoint. Domain routes, telemetry middleware, and database wiring land
-in Phase 1.
+Phase 1 wires telemetry, DB, Redis, request-scoped middleware, and a real
+readiness probe. Domain routers (apps, builds, webhooks, auth) land in
+later phases.
 """
 
 from __future__ import annotations
 
 from fastapi import FastAPI
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from liftwork_api import __version__
+from liftwork_api.lifespan import lifespan
+from liftwork_api.middleware import RequestContextMiddleware
+from liftwork_api.routers import health, metrics
 
 
 def create_app() -> FastAPI:
@@ -18,20 +22,15 @@ def create_app() -> FastAPI:
         version=__version__,
         docs_url="/docs",
         redoc_url=None,
+        lifespan=lifespan,
     )
 
-    @app.get("/healthz", tags=["meta"])
-    async def healthz() -> dict[str, str]:
-        return {"status": "ok"}
+    app.add_middleware(RequestContextMiddleware)
 
-    @app.get("/readyz", tags=["meta"])
-    async def readyz() -> dict[str, str]:
-        return {"status": "ready"}
+    app.include_router(health.router)
+    app.include_router(metrics.router)
 
-    @app.get("/", tags=["meta"])
-    async def root() -> dict[str, str]:
-        return {"service": "liftwork-api", "version": __version__}
-
+    FastAPIInstrumentor.instrument_app(app)
     return app
 
 

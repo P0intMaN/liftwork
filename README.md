@@ -52,7 +52,7 @@ make bootstrap       # uv sync + pnpm install + pre-commit install
 cp .env.example .env
 
 make dev-up          # postgres + redis via docker-compose
-make dev-api         # http://localhost:8000/docs
+make dev-api         # http://localhost:7878/docs
 # in another shell:
 make dev-worker
 ```
