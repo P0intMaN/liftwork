@@ -1,4 +1,5 @@
 # liftwork
+![liftwork logo](https://github.com/user-attachments/assets/fefe241b-b87d-4414-93f6-55094ae3a9fa)
 
 > Plug-and-play Kubernetes build & deploy platform.
 > Self-hosted "internal Heroku" — drop in a Helm chart, point at a repo, get a deploy.
