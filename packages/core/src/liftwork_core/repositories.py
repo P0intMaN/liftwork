@@ -6,11 +6,11 @@ routers and worker job handlers depend on these — never on the session.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from liftwork_core.db.models import (
@@ -19,6 +19,8 @@ from liftwork_core.db.models import (
     BuildSource,
     BuildStatus,
     Cluster,
+    Deployment,
+    DeploymentStatus,
     User,
     UserRole,
 )
@@ -207,3 +209,168 @@ class BuildRunRepository:
             run.finished_at = _utcnow()
         await self.session.flush()
         return run
+
+    async def list_recent(self, *, limit: int = 100) -> list[BuildRun]:
+        result = await self.session.execute(
+            select(BuildRun).order_by(BuildRun.created_at.desc()).limit(limit)
+        )
+        return list(result.scalars())
+
+
+class DeploymentRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def get_by_id(self, deployment_id: UUID) -> Deployment | None:
+        return await self.session.get(Deployment, deployment_id)
+
+    async def list_for_application(
+        self, application_id: UUID, *, limit: int = 50
+    ) -> list[Deployment]:
+        result = await self.session.execute(
+            select(Deployment)
+            .where(Deployment.application_id == application_id)
+            .order_by(Deployment.created_at.desc())
+            .limit(limit)
+        )
+        return list(result.scalars())
+
+    async def list_recent(self, *, limit: int = 100) -> list[Deployment]:
+        result = await self.session.execute(
+            select(Deployment).order_by(Deployment.created_at.desc()).limit(limit)
+        )
+        return list(result.scalars())
+
+
+class AnalyticsRepository:
+    """Read-only aggregate queries that power the dashboard."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def builds_summary(self, *, since_days: int = 30) -> dict[str, Any]:
+        threshold = _utcnow() - timedelta(days=since_days)
+        result = await self.session.execute(
+            select(
+                func.count(BuildRun.id).label("total"),
+                func.sum(case((BuildRun.status == BuildStatus.succeeded, 1), else_=0)).label(
+                    "succeeded"
+                ),
+                func.sum(case((BuildRun.status == BuildStatus.failed, 1), else_=0)).label(
+                    "failed"
+                ),
+                func.sum(
+                    case(
+                        (
+                            BuildRun.status.in_(
+                                (
+                                    BuildStatus.queued,
+                                    BuildStatus.running,
+                                    BuildStatus.building,
+                                    BuildStatus.pushing,
+                                )
+                            ),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ).label("in_flight"),
+                func.avg(
+                    func.extract(
+                        "epoch",
+                        BuildRun.finished_at - BuildRun.started_at,
+                    )
+                ).label("avg_duration_seconds"),
+            ).where(BuildRun.created_at >= threshold)
+        )
+        row = result.one()
+        return {
+            "total": int(row.total or 0),
+            "succeeded": int(row.succeeded or 0),
+            "failed": int(row.failed or 0),
+            "in_flight": int(row.in_flight or 0),
+            "avg_duration_seconds": float(row.avg_duration_seconds or 0.0),
+            "since_days": since_days,
+        }
+
+    async def deploys_summary(self, *, since_days: int = 30) -> dict[str, Any]:
+        threshold = _utcnow() - timedelta(days=since_days)
+        result = await self.session.execute(
+            select(
+                func.count(Deployment.id).label("total"),
+                func.sum(case((Deployment.status == DeploymentStatus.succeeded, 1), else_=0)).label(
+                    "succeeded"
+                ),
+                func.sum(case((Deployment.status == DeploymentStatus.failed, 1), else_=0)).label(
+                    "failed"
+                ),
+            ).where(Deployment.created_at >= threshold)
+        )
+        row = result.one()
+        return {
+            "total": int(row.total or 0),
+            "succeeded": int(row.succeeded or 0),
+            "failed": int(row.failed or 0),
+            "since_days": since_days,
+        }
+
+    async def builds_per_day(self, *, days: int = 30) -> list[dict[str, Any]]:
+        """Return [{day, total, succeeded, failed}] for the last `days`."""
+        threshold = _utcnow() - timedelta(days=days)
+        day = func.date_trunc("day", BuildRun.created_at).label("day")
+        result = await self.session.execute(
+            select(
+                day,
+                func.count(BuildRun.id).label("total"),
+                func.sum(case((BuildRun.status == BuildStatus.succeeded, 1), else_=0)).label(
+                    "succeeded"
+                ),
+                func.sum(case((BuildRun.status == BuildStatus.failed, 1), else_=0)).label(
+                    "failed"
+                ),
+            )
+            .where(BuildRun.created_at >= threshold)
+            .group_by(day)
+            .order_by(day)
+        )
+        return [
+            {
+                "day": row.day.isoformat() if row.day is not None else None,
+                "total": int(row.total or 0),
+                "succeeded": int(row.succeeded or 0),
+                "failed": int(row.failed or 0),
+            }
+            for row in result.all()
+        ]
+
+    async def deploys_per_day(self, *, days: int = 30) -> list[dict[str, Any]]:
+        threshold = _utcnow() - timedelta(days=days)
+        day = func.date_trunc("day", Deployment.created_at).label("day")
+        result = await self.session.execute(
+            select(
+                day,
+                func.count(Deployment.id).label("total"),
+                func.sum(case((Deployment.status == DeploymentStatus.succeeded, 1), else_=0)).label(
+                    "succeeded"
+                ),
+                func.sum(case((Deployment.status == DeploymentStatus.failed, 1), else_=0)).label(
+                    "failed"
+                ),
+            )
+            .where(Deployment.created_at >= threshold)
+            .group_by(day)
+            .order_by(day)
+        )
+        return [
+            {
+                "day": row.day.isoformat() if row.day is not None else None,
+                "total": int(row.total or 0),
+                "succeeded": int(row.succeeded or 0),
+                "failed": int(row.failed or 0),
+            }
+            for row in result.all()
+        ]
+
+    async def application_count(self) -> int:
+        result = await self.session.execute(select(func.count(Application.id)))
+        return int(result.scalar() or 0)

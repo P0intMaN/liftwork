@@ -116,6 +116,69 @@ class BuildEnqueuedResponse(BaseModel):
     deduplicated: bool = False
 
 
+class DeploymentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    application_id: UUID
+    build_run_id: UUID | None
+    cluster_id: UUID
+    namespace: str
+    image_tag: str
+    image_digest: str | None
+    status: str
+    revision: int
+    error: str | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    created_at: datetime
+
+
+# ----- Dashboard analytics ---------------------------------------------------
+
+
+class CountTriple(BaseModel):
+    total: int
+    succeeded: int
+    failed: int
+
+
+class BuildsSummary(CountTriple):
+    in_flight: int
+    avg_duration_seconds: float
+    since_days: int
+
+
+class DeploysSummary(CountTriple):
+    since_days: int
+
+
+class TimeseriesPoint(BaseModel):
+    day: str
+    total: int
+    succeeded: int
+    failed: int
+
+
+class MetricsSummary(BaseModel):
+    builds: BuildsSummary
+    deploys: DeploysSummary
+    applications: int
+    clusters: int
+
+
+class ActivityItem(BaseModel):
+    """Unified row across BuildRun + Deployment for a single timeline."""
+
+    kind: str               # "build" | "deploy"
+    id: UUID
+    application_id: UUID
+    application_slug: str | None
+    status: str
+    detail: str | None      # commit message / image tag / etc.
+    created_at: datetime
+
+
 # ----- Webhooks --------------------------------------------------------------
 
 

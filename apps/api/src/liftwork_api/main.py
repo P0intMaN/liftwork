@@ -8,6 +8,7 @@ later phases.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from liftwork_api import __version__
@@ -18,6 +19,8 @@ from liftwork_api.routers import (
     auth,
     builds,
     clusters,
+    dashboard,
+    deployments,
     health,
     metrics,
     webhooks,
@@ -33,6 +36,19 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Allow the dashboard's Vite dev server to call the API directly.
+    # In production both run behind the same nginx ingress so CORS is moot.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",
+            "http://localhost:4173",
+            "http://127.0.0.1:5173",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.add_middleware(RequestContextMiddleware)
 
     app.include_router(health.router)
@@ -42,6 +58,9 @@ def create_app() -> FastAPI:
     app.include_router(applications.router)
     app.include_router(builds.router)
     app.include_router(builds.detail_router)
+    app.include_router(deployments.router)
+    app.include_router(deployments.detail_router)
+    app.include_router(dashboard.router)
     app.include_router(webhooks.router)
 
     FastAPIInstrumentor.instrument_app(app)

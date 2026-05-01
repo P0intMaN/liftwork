@@ -1,4 +1,4 @@
-.PHONY: help bootstrap install lint format typecheck test dev-api dev-worker dev-up dev-down migrate migrate-rev migrate-down kind-prereqs kind-down clean
+.PHONY: help bootstrap install lint format typecheck test dev-api dev-worker dev-dashboard dashboard-build dev-up dev-down migrate migrate-rev migrate-down kind-prereqs kind-down clean
 
 PNPM         ?= pnpm
 UV           ?= uv
@@ -15,8 +15,9 @@ help:
 	@echo "  make test        pytest across all members"
 	@echo "  make dev-up      docker-compose up -d (postgres + redis)"
 	@echo "  make dev-down    docker-compose down"
-	@echo "  make dev-api     run the FastAPI app with reload"
-	@echo "  make dev-worker  run the arq worker"
+	@echo "  make dev-api        run the FastAPI app with reload"
+	@echo "  make dev-worker     run the arq worker"
+	@echo "  make dev-dashboard  Vite dev server at http://localhost:5173 (proxies /api → :7878)"
 	@echo "  make migrate          alembic upgrade head"
 	@echo "  make migrate-rev m=msg  alembic revision --autogenerate -m \"\$$m\""
 	@echo "  make migrate-down       alembic downgrade -1"
@@ -55,6 +56,12 @@ dev-api:
 
 dev-worker:
 	$(UV) run --package liftwork-worker python -m liftwork_worker.main
+
+dev-dashboard:
+	cd apps/dashboard && $(PNPM) install --silent && $(PNPM) dev
+
+dashboard-build:
+	cd apps/dashboard && $(PNPM) install --silent && $(PNPM) build
 
 migrate:
 	$(UV) run alembic upgrade head

@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+    --radius: 0.6rem;
+  }
+
+  .dark {
+    --background: 222 38% 6%;
+    --foreground: 213 31% 92%;
+    --card: 223 33% 9%;
+    --card-foreground: 213 31% 92%;
+    --popover: 223 33% 9%;
+    --popover-foreground: 213 31% 92%;
+    --primary: 213 94% 68%;
+    --primary-foreground: 222 47% 11%;
+    --secondary: 223 30% 15%;
+    --secondary-foreground: 213 31% 92%;
+    --muted: 223 30% 13%;
+    --muted-foreground: 215 16% 60%;
+    --accent: 223 30% 15%;
+    --accent-foreground: 213 31% 92%;
+    --destructive: 0 75% 56%;
+    --destructive-foreground: 213 31% 92%;
+    --border: 223 30% 16%;
+    --input: 223 30% 16%;
+    --ring: 213 94% 68%;
+  }
+
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+}
+
+/* Subtle scanline-style gradient backdrop on page-level headers. */
+.gradient-surface {
+  background:
+    radial-gradient(80% 60% at 0% 0%, hsl(var(--primary) / 0.15), transparent 60%),
+    radial-gradient(60% 40% at 100% 0%, hsl(var(--info) / 0.10), transparent 70%),
+    hsl(var(--card));
+}
+
+/* Skeleton shimmer */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted)) 0%,
+    hsl(var(--muted) / 0.5) 40%,
+    hsl(var(--muted)) 80%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2.4s linear infinite;
+}
+
+/* Log viewer */
+.log-line { @apply font-mono text-xs leading-5 text-foreground/85 whitespace-pre-wrap; }
+.log-line.is-error { @apply text-destructive; }
+.log-line.is-meta  { @apply text-info; }
