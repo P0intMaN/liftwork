@@ -10,7 +10,7 @@ import { PipelineSteps, type PipelineStep } from "@/components/PipelineSteps";
 import { StatusBadge } from "@/components/StatusBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { absTime, formatDuration, shortSha } from "@/lib/format";
-import type { BuildRun } from "@/lib/types";
+import type { BuildRun, Deployment } from "@/lib/types";
 
 export default function BuildDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
@@ -27,6 +27,17 @@ export default function BuildDetailPage() {
     queryFn: () => api.getApplication(build.data!.application_id),
     enabled: !!build.data,
   });
+  const deploys = useQuery({
+    queryKey: ["app", build.data?.application_id, "deployments"],
+    queryFn: () => api.listDeployments(build.data!.application_id),
+    enabled: !!build.data,
+    refetchInterval: (q) => {
+      const matching = q.state.data?.find((d) => d.build_run_id === build.data?.id);
+      if (!matching) return 3000;
+      return ["succeeded", "failed", "rolled_back"].includes(matching.status) ? false : 3000;
+    },
+  });
+  const matchedDeploy = deploys.data?.find((d) => d.build_run_id === build.data?.id) ?? null;
 
   return (
     <>
@@ -56,7 +67,7 @@ export default function BuildDetailPage() {
           </CardHeader>
           <CardContent>
             {build.data ? (
-              <PipelineSteps steps={pipelineFor(build.data)} />
+              <PipelineSteps steps={pipelineFor(build.data, matchedDeploy)} />
             ) : (
               <Skeleton className="h-12 w-full" />
             )}
@@ -129,30 +140,54 @@ function Meta({ label, children }: { label: string; children: React.ReactNode })
   );
 }
 
-function pipelineFor(run: BuildRun): PipelineStep[] {
-  const status = run.status;
-  const succeeded = (s: string) =>
-    status === "succeeded" || status === "running" || status === "building" || status === "pushing"
-      ? s
-      : "pending";
-  const buildState =
-    status === "succeeded" || status === "pushing"
+function pipelineFor(run: BuildRun, deploy: Deployment | null): PipelineStep[] {
+  const buildAdvanced =
+    run.status === "running" ||
+    run.status === "building" ||
+    run.status === "pushing" ||
+    run.status === "succeeded";
+
+  const cloneState: PipelineStep["state"] =
+    run.status === "queued" ? "pending" : run.status === "failed" ? "skipped" : "succeeded";
+
+  const buildState: PipelineStep["state"] =
+    run.status === "succeeded" || run.status === "pushing"
       ? "succeeded"
-      : status === "building"
+      : run.status === "building" || run.status === "running"
         ? "active"
-        : status === "failed"
+        : run.status === "failed"
           ? "failed"
           : "pending";
-  const pushState =
-    status === "succeeded" ? "succeeded" : status === "pushing" ? "active" : "pending";
-  const deployState = status === "succeeded" ? "active" : status === "failed" ? "skipped" : "pending";
+
+  const pushState: PipelineStep["state"] =
+    run.status === "succeeded"
+      ? "succeeded"
+      : run.status === "pushing"
+        ? "active"
+        : run.status === "failed"
+          ? "skipped"
+          : "pending";
+
+  // Deploy step is driven by the *deploy row*, not the build status.
+  let deployState: PipelineStep["state"];
+  if (run.status === "failed") {
+    deployState = "skipped";
+  } else if (!buildAdvanced) {
+    deployState = "pending";
+  } else if (!deploy) {
+    // Build succeeded but deploy hasn't been created yet — auto_deploy off, or job not picked up.
+    deployState = run.status === "succeeded" ? "skipped" : "pending";
+  } else if (deploy.status === "succeeded") {
+    deployState = "succeeded";
+  } else if (deploy.status === "failed" || deploy.status === "rolled_back") {
+    deployState = "failed";
+  } else {
+    deployState = "active";  // pending | applying | rolling_out
+  }
+
   return [
     { key: "queue", label: "Queued", state: "succeeded" },
-    {
-      key: "clone",
-      label: "Clone",
-      state: status === "queued" ? "pending" : (succeeded("succeeded") as PipelineStep["state"]),
-    },
+    { key: "clone", label: "Clone", state: cloneState },
     { key: "build", label: "Build", state: buildState },
     { key: "push", label: "Push", state: pushState },
     { key: "deploy", label: "Deploy", state: deployState },

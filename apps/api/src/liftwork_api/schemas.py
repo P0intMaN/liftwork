@@ -51,6 +51,7 @@ class ClusterOut(BaseModel):
     in_cluster: bool
     default_namespace: str
     status: str
+    last_seen_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

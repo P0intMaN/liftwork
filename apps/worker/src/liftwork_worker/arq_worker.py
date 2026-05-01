@@ -7,6 +7,7 @@ from typing import Any, ClassVar
 import redis.asyncio as redis_asyncio
 import structlog
 from arq.connections import RedisSettings
+from arq.cron import cron
 
 from liftwork_api import __version__
 from liftwork_core.build.protocols import BuildExecutor
@@ -17,6 +18,7 @@ from liftwork_core.logging import configure_logging
 from liftwork_core.telemetry import configure_telemetry
 from liftwork_worker.deploy.k8s_executor import K8sDeployExecutor
 from liftwork_worker.executors.buildkit_pod import K8sBuildKitExecutor
+from liftwork_worker.health import check_clusters_health
 from liftwork_worker.jobs import run_build, run_deploy
 from liftwork_worker.k8s import load_kube_clients
 from liftwork_worker.mock_executors import MockBuildExecutor, MockDeployExecutor
@@ -101,6 +103,17 @@ class WorkerSettings:
     """arq picks these class attributes up by reflection."""
 
     functions: ClassVar[list[Any]] = [run_build, run_deploy]
+    # Probe every registered cluster every minute and on startup so the
+    # dashboard's status badge reflects reality, not the unknown default.
+    cron_jobs: ClassVar[list[Any]] = [
+        cron(
+            check_clusters_health,
+            minute=set(range(60)),
+            run_at_startup=True,
+            keep_result=60,
+            unique=True,
+        ),
+    ]
     on_startup = on_startup
     on_shutdown = on_shutdown
     redis_settings: RedisSettings = _redis_settings()

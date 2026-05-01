@@ -25,7 +25,11 @@ export default function ClustersPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const clusters = useQuery({ queryKey: ["clusters"], queryFn: api.listClusters });
+  const clusters = useQuery({
+    queryKey: ["clusters"],
+    queryFn: api.listClusters,
+    refetchInterval: 15_000,
+  });
   const create = useMutation({
     mutationFn: api.createCluster,
     onSuccess: () => {
@@ -71,7 +75,12 @@ export default function ClustersPage() {
                     <p className="mt-0.5 text-foreground">{c.in_cluster ? "in-cluster SA" : "kubeconfig"}</p>
                   </div>
                 </div>
-                <p className="mt-3 text-[11px] text-muted-foreground">added {relTime(c.created_at)}</p>
+                <p className="mt-3 text-[11px] text-muted-foreground">
+                  added {relTime(c.created_at)}
+                  {c.last_seen_at && (
+                    <span className="ml-2">· last seen {relTime(c.last_seen_at)}</span>
+                  )}
+                </p>
               </Card>
             ))}
           </div>

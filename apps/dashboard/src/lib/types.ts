@@ -10,6 +10,7 @@ export interface Cluster {
   in_cluster: boolean;
   default_namespace: string;
   status: string;
+  last_seen_at: string | null;
   created_at: string;
   updated_at: string;
 }
