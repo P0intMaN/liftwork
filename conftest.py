@@ -11,6 +11,8 @@ admin). On first session use we:
 Subsequent runs skip steps 1–3 (migrations are idempotent anyway).
 Skipped silently when Postgres isn't reachable.
 """
+# ruff: noqa: S603, S607, S608, PLW1510
+# Subprocess args + DB name are hard-coded at module scope here, not user-controlled.
 
 from __future__ import annotations
 

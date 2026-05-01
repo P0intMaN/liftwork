@@ -161,6 +161,12 @@ class Application(IdMixin, TimestampMixin, Base):
     )
     build_config_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
     auto_deploy: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Per-app deploy overrides — without these every app would inherit the
+    # default DeploySpec (port 8080, /healthz) which most off-the-shelf
+    # images don't satisfy.
+    app_port: Mapped[int] = mapped_column(Integer, default=8080, nullable=False)
+    health_check_path: Mapped[str] = mapped_column(String(255), default="/healthz", nullable=False)
+    replicas: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
 
 class BuildRun(IdMixin, TimestampMixin, Base):

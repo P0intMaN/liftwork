@@ -19,7 +19,7 @@ from uuid import UUID
 import structlog
 from sqlalchemy import func, select
 
-from liftwork_core.build.config import LiftworkConfig
+from liftwork_core.build.config import DeploySpec, HealthCheck
 from liftwork_core.db.models import (
     Application,
     BuildRun,
@@ -285,11 +285,14 @@ async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
     sink = TeeLogSink([archive_sink, pubsub_sink])
 
     try:
-        # liftwork.yaml is parsed at build time; re-fetch deploy spec from
-        # there in 4b-2 (we'll persist it on the BuildRun row). For 4b-1
-        # we use the bare DeploySpec defaults.
-        config = LiftworkConfig()
-
+        # Build the DeploySpec from the per-app overrides on the
+        # Application row. liftwork.yaml-driven overrides land in v2 by
+        # persisting the parsed config on the BuildRun.
+        deploy_spec = DeploySpec(
+            port=application.app_port,
+            replicas=application.replicas,
+            health_check=HealthCheck(path=application.health_check_path),
+        )
         deploy_request = DeployRequest(
             target=DeployTarget(cluster_name=cluster.name, namespace=application.namespace),
             application_slug=application.slug,
@@ -303,7 +306,7 @@ async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
             ),
             image_digest=run.image_digest,
             image_tag=run.image_tag,
-            deploy_spec=config.deploy,
+            deploy_spec=deploy_spec,
             revision=revision,
             commit_sha=run.commit_sha,
             branch=run.branch,

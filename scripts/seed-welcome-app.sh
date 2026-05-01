@@ -56,7 +56,10 @@ APP_ID=$(curl -s -X POST http://localhost:7878/applications \
     \"cluster_id\":\"${CLUSTER_ID}\",
     \"namespace\":\"${APP_NS}\",
     \"image_repository\":\"liftwork/welcome-app\",
-    \"auto_deploy\":true
+    \"auto_deploy\":true,
+    \"app_port\":3000,
+    \"health_check_path\":\"/\",
+    \"replicas\":1
   }" \
   | python3 -c 'import sys, json; print(json.load(sys.stdin)["id"])')
 echo "  app_id=${APP_ID}"

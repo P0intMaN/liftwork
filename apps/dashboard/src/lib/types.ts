@@ -26,6 +26,9 @@ export interface Application {
   namespace: string;
   image_repository: string;
   auto_deploy: boolean;
+  app_port: number;
+  health_check_path: string;
+  replicas: number;
   created_at: string;
   updated_at: string;
 }

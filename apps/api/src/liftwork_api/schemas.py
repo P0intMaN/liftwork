@@ -69,6 +69,10 @@ class ApplicationCreate(BaseModel):
     namespace: Annotated[str, Field(min_length=1, max_length=63)]
     image_repository: Annotated[str, Field(min_length=1, max_length=512)]
     auto_deploy: bool = True
+    # Per-app deploy overrides
+    app_port: Annotated[int, Field(ge=1, le=65535)] = 8080
+    health_check_path: Annotated[str, Field(min_length=1, max_length=255)] = "/healthz"
+    replicas: Annotated[int, Field(ge=1, le=50)] = 1
 
 
 class ApplicationOut(BaseModel):
@@ -85,6 +89,9 @@ class ApplicationOut(BaseModel):
     namespace: str
     image_repository: str
     auto_deploy: bool
+    app_port: int
+    health_check_path: str
+    replicas: int
     created_at: datetime
     updated_at: datetime
 

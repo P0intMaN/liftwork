@@ -141,6 +141,9 @@ function NewApplicationDialog({
     namespace: string;
     image_repository: string;
     auto_deploy: boolean;
+    app_port: number;
+    health_check_path: string;
+    replicas: number;
   }) => void;
   submitting: boolean;
 }) {
@@ -149,6 +152,9 @@ function NewApplicationDialog({
   const [repoUrl, setRepoUrl] = useState("");
   const [namespace, setNamespace] = useState("");
   const [clusterId, setClusterId] = useState(clusters[0]?.id ?? "");
+  const [port, setPort] = useState("8080");
+  const [healthPath, setHealthPath] = useState("/healthz");
+  const [replicas, setReplicas] = useState("1");
 
   function parseRepo(url: string) {
     // Accept https or ssh GitHub URLs and pull owner/name
@@ -178,6 +184,9 @@ function NewApplicationDialog({
       namespace: namespace || slug,
       image_repository: `liftwork/${slug}`,
       auto_deploy: true,
+      app_port: Number(port) || 8080,
+      health_check_path: healthPath || "/healthz",
+      replicas: Number(replicas) || 1,
     });
   }
 
@@ -218,6 +227,11 @@ function NewApplicationDialog({
             onChange={setNamespace}
             placeholder="my-api"
           />
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Port" hint="containerPort + Service" value={port} onChange={setPort} placeholder="8080" />
+            <Field label="Health path" hint="readiness/liveness" value={healthPath} onChange={setHealthPath} placeholder="/healthz" />
+            <Field label="Replicas" value={replicas} onChange={setReplicas} placeholder="1" />
+          </div>
           <div className="space-y-2">
             <Label>Cluster</Label>
             <select
