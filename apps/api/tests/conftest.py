@@ -27,7 +27,7 @@ os.environ.setdefault("LIFTWORK_ENV", "dev")
 os.environ.setdefault("LIFTWORK_LOG_LEVEL", "WARNING")
 os.environ.setdefault(
     "LIFTWORK_DATABASE__URL",
-    "postgresql+asyncpg://liftwork:liftwork@localhost:5432/liftwork",
+    "postgresql+asyncpg://liftwork:liftwork@localhost:5432/liftwork_test",
 )
 os.environ.setdefault("LIFTWORK_REDIS__URL", "redis://localhost:6379/0")
 os.environ.setdefault(
