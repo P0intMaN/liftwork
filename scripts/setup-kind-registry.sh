@@ -47,8 +47,21 @@ server = \"http://${REG_HOST}:${REG_PORT}\"
 NODES=$(kind get nodes --name "${CLUSTER}")
 for node in ${NODES}; do
   echo "  · ${node}"
+  # 1. Per-host hosts.toml that maps the cluster-DNS hostname through the
+  #    NodePort. Without this, containerd would try HTTPS against the
+  #    in-cluster Service IP (which it can't even resolve).
   docker exec "${node}" mkdir -p "${HOSTS_DIR}"
   printf '%s' "${HOSTS_TOML}" | docker exec -i "${node}" tee "${HOSTS_DIR}/hosts.toml" >/dev/null
+
+  # 2. Make sure containerd is *told* to look at /etc/containerd/certs.d.
+  #    Some kind/node images don't ship the CRI registry section by
+  #    default — without `config_path`, the hosts.toml above is invisible
+  #    and pulls fall back to the default HTTPS-against-the-hostname path.
+  if ! docker exec "${node}" grep -q 'config_path = "/etc/containerd/certs.d"' /etc/containerd/config.toml; then
+    docker exec "${node}" sh -c 'printf "\n[plugins.\"io.containerd.grpc.v1.cri\".registry]\n  config_path = \"/etc/containerd/certs.d\"\n" >> /etc/containerd/config.toml'
+    docker exec "${node}" systemctl restart containerd
+    sleep 5
+  fi
 done
 
 echo "▶ documenting registry to anyone using kind tooling"

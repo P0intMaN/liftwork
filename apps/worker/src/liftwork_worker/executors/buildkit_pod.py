@@ -24,6 +24,7 @@ Two public surfaces:
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 import time
 from dataclasses import dataclass
@@ -39,11 +40,14 @@ from liftwork_worker.k8s import K8sClients
 
 DIGEST_MARKER: Final[str] = "LIFTWORK_DIGEST="
 _DIGEST_LINE_RE = re.compile(rf"{DIGEST_MARKER}(sha256:[0-9a-f]{{64}})")
+META_BEGIN_MARKER: Final[str] = "LIFTWORK_META_BEGIN"
+META_END_MARKER: Final[str] = "LIFTWORK_META_END"
 DEFAULT_BUILDKIT_IMAGE: Final[str] = "moby/buildkit:v0.16.0-rootless"
 DEFAULT_GIT_IMAGE: Final[str] = "alpine/git:2.45.2"
 DEFAULT_NAMESPACE: Final[str] = "liftwork"
 DEFAULT_REGISTRY_SECRET_NAME: Final[str] = "liftwork-registry-creds"  # noqa: S105 — k8s resource name, not a credential
 _NOT_FOUND: Final[int] = 404
+_CONFLICT: Final[int] = 409
 _POLL_INTERVAL_SECONDS: Final[float] = 2.0
 
 
@@ -100,13 +104,18 @@ def build_buildkit_job_spec(spec: JobSpecInputs) -> dict[str, Any]:
             ]
         )
 
+    # We can't reliably extract `containerimage.digest` with sh tools alone
+    # (sed/awk + JSON quoting collide with the surrounding shell + ConfigMap
+    # serialization). Instead, dump the raw metadata JSON between marker
+    # lines and let the executor parse it in Python.
     main_command = [
         "sh",
         "-ec",
         "buildctl-daemonless.sh "
         + " ".join(buildctl_args)
-        + ' && DIGEST=$(grep -oE "sha256:[0-9a-f]{64}" /tmp/meta.json | head -n1)'
-        + f' && echo "{DIGEST_MARKER}${{DIGEST}}"',
+        + f" && echo {META_BEGIN_MARKER}"
+        + " && cat /tmp/meta.json"
+        + f" && echo && echo {META_END_MARKER}",
     ]
 
     container_volume_mounts: list[dict[str, Any]] = [
@@ -223,7 +232,11 @@ def build_buildkit_job_spec(spec: JobSpecInputs) -> dict[str, Any]:
                                 "runAsUser": 1000,
                                 "runAsGroup": 1000,
                                 "runAsNonRoot": True,
-                                "allowPrivilegeEscalation": False,
+                                # MUST be true so /usr/bin/newuidmap can elevate
+                                # via its setuid bit. With no_new_privs (false),
+                                # rootless BuildKit fails with
+                                # "newuidmap: Could not set caps".
+                                "allowPrivilegeEscalation": True,
                                 "seccompProfile": {"type": "Unconfined"},
                             },
                         },
@@ -236,9 +249,22 @@ def build_buildkit_job_spec(spec: JobSpecInputs) -> dict[str, Any]:
 
 
 def parse_digest(line: str) -> str | None:
-    """Return the sha256 digest if `line` carries our marker."""
+    """Legacy single-line marker parser (still used by tests)."""
     match = _DIGEST_LINE_RE.search(line)
     return match.group(1) if match else None
+
+
+def extract_manifest_digest(metadata_json: str) -> str | None:
+    """Pick `containerimage.digest` (the manifest sha256) out of BuildKit's
+    --metadata-file JSON. Returns None on parse error or missing key."""
+    try:
+        meta = json.loads(metadata_json)
+    except (ValueError, TypeError):
+        return None
+    digest = meta.get("containerimage.digest")
+    if isinstance(digest, str) and digest.startswith("sha256:"):
+        return digest
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +305,10 @@ class K8sBuildKitExecutor:
             msg = "K8sBuildKitExecutor requires ctx.repo_url and ctx.branch"
             raise BuildKitExecutorError(msg)
 
-        build_id = (ctx.build_id or uuid4().hex)[:24]
+        # Truncate to 24 chars; collapse UUID dashes first so we never end
+        # on a hyphen (k8s label values must end alphanumerically).
+        raw = ctx.build_id or uuid4().hex
+        build_id = raw.replace("-", "")[:24] or "build"
         cm_name = f"liftwork-build-{build_id}-df"[:63].rstrip("-")
         spec = JobSpecInputs(
             build_id=build_id,
@@ -305,10 +334,26 @@ class K8sBuildKitExecutor:
         )
 
         await self._create_dockerfile_configmap(cm_name, dockerfile_text)
+        submitted = False
         try:
             await self._submit_job(job_manifest)
+            submitted = True
             start = time.perf_counter()
-            digest = await self._stream_pod_logs(job_name=job_name, log_sink=log_sink)
+
+            pod_name = await self._find_pod_for_build(build_id=build_id)
+            await log_sink.write(f"[buildkit] pod={pod_name} (init)")
+
+            # Init container does git clone first; the buildkit container
+            # only enters Running once that succeeds. Until then,
+            # read_namespaced_pod_log returns 400.
+            await self._wait_for_container_started(
+                pod_name=pod_name, container="buildkit"
+            )
+            await log_sink.write(f"[buildkit] streaming pod={pod_name}")
+
+            digest = await self._stream_pod_logs(
+                pod_name=pod_name, log_sink=log_sink
+            )
             success = await self._wait_for_completion(job_name=job_name)
             duration = time.perf_counter() - start
 
@@ -329,6 +374,10 @@ class K8sBuildKitExecutor:
                 duration_seconds=round(duration, 3),
             )
         finally:
+            # Block until the Job is in a terminal state — otherwise
+            # deleting the ConfigMap unmounts it from a still-running Pod.
+            if submitted:
+                await self._wait_for_job_terminal(job_name=job_name, timeout_seconds=30)
             await self._delete_configmap(cm_name)
 
     # ---- k8s I/O helpers (each blocking call goes via to_thread) ----
@@ -356,7 +405,18 @@ class K8sBuildKitExecutor:
                 )
             )
         except ApiException as exc:
-            msg = f"failed to create ConfigMap/{name}: {exc.reason}"
+            if exc.status == _CONFLICT:  # already exists — replace
+                await anyio.to_thread.run_sync(
+                    partial(
+                        self._clients.core_v1.replace_namespaced_config_map,
+                        name=name,
+                        namespace=self._namespace,
+                        body=body,
+                    )
+                )
+                return
+            cm_body = (exc.body or "")[:600] if isinstance(exc.body, str) else ""
+            msg = f"failed to create ConfigMap/{name}: {exc.reason} ({exc.status}) — {cm_body}"
             raise BuildKitExecutorError(msg) from exc
 
     async def _submit_job(self, manifest: dict[str, Any]) -> None:
@@ -369,7 +429,11 @@ class K8sBuildKitExecutor:
                 )
             )
         except ApiException as exc:
-            msg = f"failed to submit Job/{manifest['metadata']['name']}: {exc.reason}"
+            body = (exc.body or "")[:600] if isinstance(exc.body, str) else ""
+            msg = (
+                f"failed to submit Job/{manifest['metadata']['name']}: "
+                f"{exc.reason} ({exc.status}) — {body}"
+            )
             raise BuildKitExecutorError(msg) from exc
 
     async def _delete_configmap(self, name: str) -> None:
@@ -387,10 +451,10 @@ class K8sBuildKitExecutor:
             # cleanup failure is non-fatal — log and move on
             return
 
-    async def _find_pod_for_job(self, *, job_name: str) -> str:
+    async def _find_pod_for_build(self, *, build_id: str) -> str:
         """Wait until the Job has produced a Pod, then return its name."""
         deadline = time.monotonic() + 60.0
-        label_selector = f"liftwork.io/build-id={job_name.removeprefix('liftwork-build-')}"
+        label_selector = f"liftwork.io/build-id={build_id}"
         while time.monotonic() < deadline:
             try:
                 pods = await anyio.to_thread.run_sync(
@@ -401,24 +465,85 @@ class K8sBuildKitExecutor:
                     )
                 )
             except ApiException as exc:
-                msg = f"could not list pods for {job_name}: {exc.reason}"
+                msg = f"could not list pods for build_id={build_id}: {exc.reason}"
                 raise BuildKitExecutorError(msg) from exc
             if pods.items:
                 return str(pods.items[0].metadata.name)
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-        msg = f"timed out waiting for Job {job_name} to spawn a Pod"
+        msg = f"timed out waiting for a Pod for build_id={build_id}"
         raise BuildKitExecutorError(msg)
+
+    async def _wait_for_container_started(
+        self,
+        *,
+        pod_name: str,
+        container: str,
+        timeout_seconds: int = 180,
+    ) -> None:
+        """Block until `container` in `pod_name` is past the Waiting state.
+
+        Init containers can take a while (git clone over the network) and
+        `read_namespaced_pod_log` returns HTTP 400 until the requested
+        container has actually started. Polling pod status is the safe
+        signal.
+        """
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                pod = await anyio.to_thread.run_sync(
+                    partial(
+                        self._clients.core_v1.read_namespaced_pod,
+                        name=pod_name,
+                        namespace=self._namespace,
+                    )
+                )
+            except ApiException as exc:
+                msg = f"failed to read pod {pod_name}: {exc.reason}"
+                raise BuildKitExecutorError(msg) from exc
+            for cs in pod.status.container_statuses or []:
+                if cs.name == container and (
+                    cs.state.running is not None or cs.state.terminated is not None
+                ):
+                    return
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+        msg = f"container {container} in pod {pod_name} never started"
+        raise BuildKitExecutorError(msg)
+
+    async def _wait_for_job_terminal(
+        self, *, job_name: str, timeout_seconds: int = 30
+    ) -> None:
+        """Wait until the Job has at least one succeeded or failed pod.
+
+        Soft cap: if the Job is still in flight after `timeout_seconds`,
+        return anyway — the caller is in a finally block and we don't want
+        to mask the real exception.
+        """
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                job = await anyio.to_thread.run_sync(
+                    partial(
+                        self._clients.batch_v1.read_namespaced_job_status,
+                        name=job_name,
+                        namespace=self._namespace,
+                    )
+                )
+            except ApiException:
+                return
+            status = job.status
+            if (status.succeeded and status.succeeded >= 1) or (
+                status.failed and status.failed >= 1
+            ):
+                return
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
 
     async def _stream_pod_logs(
         self,
         *,
-        job_name: str,
+        pod_name: str,
         log_sink: LogSink,
     ) -> str | None:
         """Tail pod logs to the sink; return the parsed digest or None."""
-        pod_name = await self._find_pod_for_job(job_name=job_name)
-        await log_sink.write(f"[buildkit] streaming logs from pod={pod_name}")
-
         digest: str | None = None
 
         # We call read_namespaced_pod_log with follow=True; it returns a
@@ -439,6 +564,8 @@ class K8sBuildKitExecutor:
             msg = f"failed to stream logs from {pod_name}: {exc.reason}"
             raise BuildKitExecutorError(msg) from exc
 
+        meta_buffer: list[str] = []
+        in_meta = False
         try:
             while True:
                 line = await anyio.to_thread.run_sync(stream.readline)
@@ -446,6 +573,17 @@ class K8sBuildKitExecutor:
                     break
                 text = line.decode("utf-8", errors="replace").rstrip()
                 await log_sink.write(text)
+                # Capture the metadata JSON dumped between markers.
+                if META_BEGIN_MARKER in text:
+                    in_meta = True
+                    continue
+                if META_END_MARKER in text:
+                    in_meta = False
+                    digest = extract_manifest_digest("".join(meta_buffer))
+                    continue
+                if in_meta:
+                    meta_buffer.append(text + "\n")
+                # Legacy single-line marker (kept for back-compat / mocks).
                 if digest is None:
                     digest = parse_digest(text)
         finally:

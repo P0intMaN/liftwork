@@ -74,9 +74,7 @@ def test_deployment_container_security_and_probes() -> None:
     container = m["spec"]["template"]["spec"]["containers"][0]
     assert container["image"].endswith("@sha256:" + "a" * 64)
     assert container["securityContext"] == {
-        "runAsNonRoot": True,
         "allowPrivilegeEscalation": False,
-        "readOnlyRootFilesystem": True,
         "capabilities": {"drop": ["ALL"]},
     }
     assert container["readinessProbe"]["httpGet"] == {"path": "/healthz", "port": "http"}

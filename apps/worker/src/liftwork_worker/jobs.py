@@ -294,7 +294,13 @@ async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
             target=DeployTarget(cluster_name=cluster.name, namespace=application.namespace),
             application_slug=application.slug,
             application_id=str(application.id),
-            image_ref=f"{application.image_repository}:{run.image_tag}",
+            # Digest-pinned ref so kubelet always pulls the exact image
+            # this build produced (mutable tags + IfNotPresent caching can
+            # otherwise serve a stale layer).
+            image_ref=(
+                f"{state.settings.registry.host}/"
+                f"{application.image_repository}@{run.image_digest}"
+            ),
             image_digest=run.image_digest,
             image_tag=run.image_tag,
             deploy_spec=config.deploy,

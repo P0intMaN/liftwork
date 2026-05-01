@@ -71,9 +71,11 @@ def build_deployment_manifest(req: DeployRequest) -> dict[str, Any]:
             "periodSeconds": spec.health_check.period_seconds * 2,
         },
         "securityContext": {
-            "runAsNonRoot": True,
+            # Hardened defaults — but NOT runAsNonRoot, because many
+            # off-the-shelf images (nginx, postgres, redis) run as root by
+            # default and would otherwise refuse to start. Override per-app
+            # via liftwork.yaml in the v2 SecuritySpec.
             "allowPrivilegeEscalation": False,
-            "readOnlyRootFilesystem": True,
             "capabilities": {"drop": ["ALL"]},
         },
     }
@@ -90,7 +92,6 @@ def build_deployment_manifest(req: DeployRequest) -> dict[str, Any]:
     pod_spec: dict[str, Any] = {
         "containers": [container],
         "securityContext": {
-            "runAsNonRoot": True,
             "seccompProfile": {"type": "RuntimeDefault"},
         },
         "automountServiceAccountToken": False,

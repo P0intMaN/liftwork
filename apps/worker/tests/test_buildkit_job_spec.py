@@ -5,8 +5,27 @@ from liftwork_worker.executors.buildkit_pod import (
     DIGEST_MARKER,
     JobSpecInputs,
     build_buildkit_job_spec,
+    extract_manifest_digest,
     parse_digest,
 )
+
+
+def test_extract_manifest_digest_picks_containerimage_digest() -> None:
+    a = "a" * 64
+    c = "c" * 64
+    meta = (
+        '{\n'
+        f'  "containerimage.config.digest": "sha256:{c}",\n'
+        f'  "containerimage.digest": "sha256:{a}",\n'
+        f'  "containerimage.descriptor": {{"digest": "sha256:{a}"}}\n'
+        '}\n'
+    )
+    assert extract_manifest_digest(meta) == f"sha256:{a}"
+
+
+def test_extract_manifest_digest_returns_none_for_garbage() -> None:
+    assert extract_manifest_digest("not json") is None
+    assert extract_manifest_digest('{"unrelated": 1}') is None
 
 
 def test_parse_digest_picks_marker_line() -> None:
@@ -78,12 +97,20 @@ def test_job_spec_main_container_runs_buildctl_and_emits_digest() -> None:
     assert "--frontend=dockerfile.v0" in full_script
     assert "--output=type=image,name=ghcr.io/acme/api:main-abc,push=true" in full_script
     assert "--export-cache=type=registry,ref=ghcr.io/acme/api:buildcache,mode=max" in full_script
-    assert DIGEST_MARKER in full_script
+    # Job emits the raw metadata JSON between markers; the executor parses
+    # the manifest digest out in Python.
+    assert "LIFTWORK_META_BEGIN" in full_script
+    assert "LIFTWORK_META_END" in full_script
+    assert "cat /tmp/meta.json" in full_script
+    assert DIGEST_MARKER  # imported but unused — keep the legacy marker around for parse_digest()
 
     sec_ctx = main["securityContext"]
     assert sec_ctx["runAsNonRoot"] is True
     assert sec_ctx["runAsUser"] == 1000
-    assert sec_ctx["allowPrivilegeEscalation"] is False
+    # MUST be true so newuidmap can elevate via its setuid bit; without it
+    # rootless BuildKit fails with "newuidmap: Could not set caps".
+    assert sec_ctx["allowPrivilegeEscalation"] is True
+    assert sec_ctx["seccompProfile"]["type"] == "Unconfined"
 
 
 def test_job_spec_mounts_dockerfile_and_registry_creds() -> None:
