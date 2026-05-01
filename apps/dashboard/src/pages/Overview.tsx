@@ -33,7 +33,7 @@ export default function OverviewPage() {
             s
               ? {
                   value: `${s.builds.in_flight} in flight`,
-                  positive: s.builds.in_flight > 0,
+                  tone: s.builds.in_flight > 0 ? "positive" : "muted",
                 }
               : undefined
           }

@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+type TrendTone = "muted" | "positive" | "warning" | "danger";
+
 export function StatCard({
   label,
   value,
@@ -13,9 +15,15 @@ export function StatCard({
   value: string | number;
   hint?: string;
   icon?: LucideIcon;
-  trend?: { value: string; positive?: boolean };
+  trend?: { value: string; tone?: TrendTone };
   className?: string;
 }) {
+  const toneClass: Record<TrendTone, string> = {
+    muted: "text-muted-foreground",
+    positive: "text-success",
+    warning: "text-warning",
+    danger: "text-destructive",
+  };
   return (
     <div
       className={cn(
@@ -32,12 +40,7 @@ export function StatCard({
       <div className="mt-2 flex items-baseline gap-3">
         <span className="text-3xl font-semibold tracking-tight tabular-nums">{value}</span>
         {trend && (
-          <span
-            className={cn(
-              "text-xs font-medium tabular-nums",
-              trend.positive ? "text-success" : "text-destructive",
-            )}
-          >
+          <span className={cn("text-xs font-medium tabular-nums", toneClass[trend.tone ?? "muted"])}>
             {trend.value}
           </span>
         )}
