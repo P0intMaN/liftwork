@@ -33,7 +33,7 @@ jobs:
             context: .
           - name: dashboard
             dockerfile: apps/dashboard/Dockerfile
-            context: apps/dashboard
+            context: .
     steps:
       - uses: actions/checkout@v4
 

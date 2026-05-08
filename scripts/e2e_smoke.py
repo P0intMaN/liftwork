@@ -155,9 +155,7 @@ def _poll(token: str, build_id: str, app_id: str) -> None:
             raise SystemExit(f"BUILD failed: {build.get('error') or '<no error captured>'}")
         if match and match["status"] in ("succeeded", "failed", "rolled_back"):
             if match["status"] != "succeeded":
-                raise SystemExit(
-                    f"DEPLOY {match['status']}: {match.get('error') or '<no error>'}"
-                )
+                raise SystemExit(f"DEPLOY {match['status']}: {match.get('error') or '<no error>'}")
             print(f"[e2e] deploy succeeded — revision={match['revision']}", flush=True)
             return
         time.sleep(3)

@@ -1,17 +1,22 @@
 # syntax=docker/dockerfile:1.7
 
 # --- Build the SPA ---------------------------------------------------------
+# Build context: this Dockerfile is built from the *repo root*
+# (`docker build -f apps/dashboard/Dockerfile .`) so the workspace
+# pnpm-lock.yaml is in scope for deterministic installs.
 FROM node:20-alpine AS builder
 WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Install deps with the lockfile we have. The dashboard ships
-# package.json + (optional) pnpm-lock.yaml; the Dockerfile prefers npm
-# ci because it doesn't require a lockfile-tooling alignment dance.
-COPY package.json package-lock.json* ./
-RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+# Copy just the manifests first so install layer caches across source-only changes.
+COPY pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/dashboard/package.json ./apps/dashboard/
+RUN pnpm install --frozen-lockfile --filter @liftwork/dashboard
 
-COPY . .
-RUN npm run build
+# Bring in the source and build.
+COPY apps/dashboard ./apps/dashboard
+WORKDIR /app/apps/dashboard
+RUN pnpm build
 
 
 # --- Serve via nginx-unprivileged (runs as uid 101) ------------------------
@@ -22,7 +27,7 @@ USER root
 RUN rm -rf /usr/share/nginx/html/*
 USER 101
 
-COPY --from=builder /app/dist /usr/share/nginx/html
+COPY --from=builder /app/apps/dashboard/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 8080

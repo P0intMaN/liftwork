@@ -89,7 +89,7 @@ image-worker:
 	docker build --pull -t $(IMAGE_REGISTRY)/liftwork-worker:$(IMAGE_TAG) -f apps/worker/Dockerfile .
 
 image-dashboard:
-	docker build --pull -t $(IMAGE_REGISTRY)/liftwork-dashboard:$(IMAGE_TAG) apps/dashboard
+	docker build --pull -t $(IMAGE_REGISTRY)/liftwork-dashboard:$(IMAGE_TAG) -f apps/dashboard/Dockerfile .
 
 images: image-api image-worker image-dashboard
 

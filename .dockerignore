@@ -1,0 +1,41 @@
+# Excludes for `docker build .` from the repo root. Each Dockerfile
+# under apps/* is built from this context so it can pick up the
+# workspace lockfiles (uv.lock, pnpm-lock.yaml).
+
+# Big install dirs — never ship these into a build context.
+**/node_modules/
+**/.venv/
+.venv/
+
+# Build outputs.
+**/dist/
+**/build/
+**/.vite/
+**/.cache/
+
+# Python bytecode / test cache.
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local-only tooling + secrets.
+.git/
+.github/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+
+# Editor / OS noise.
+*.tsbuildinfo
+*.log
+.DS_Store
+Thumbs.db
+
+# Unrelated apps from the workspace — each Dockerfile only needs the
+# files it explicitly COPYs, but trimming these speeds the context send.
+charts/liftwork/charts/    # downloaded subchart tarballs
+docs/

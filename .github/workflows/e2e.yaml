@@ -53,7 +53,7 @@ jobs:
           # without going through a registry.
           docker build --pull -t liftwork/api:e2e       -f apps/api/Dockerfile .
           docker build --pull -t liftwork/worker:e2e    -f apps/worker/Dockerfile .
-          docker build --pull -t liftwork/dashboard:e2e apps/dashboard
+          docker build --pull -t liftwork/dashboard:e2e -f apps/dashboard/Dockerfile .
           kind load docker-image liftwork/api:e2e       --name liftwork-e2e
           kind load docker-image liftwork/worker:e2e    --name liftwork-e2e
           kind load docker-image liftwork/dashboard:e2e --name liftwork-e2e
