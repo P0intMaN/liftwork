@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>liftwork — plug-and-play Kubernetes build & deploy</title>
+<meta name="description" content="Self-hosted internal Heroku for Kubernetes. One Helm chart in, every git push out." />
+<meta name="theme-color" content="#F6F4EE" />
+
+<!-- Open Graph / social -->
+<meta property="og:title" content="liftwork — plug-and-play Kubernetes build & deploy" />
+<meta property="og:description" content="Self-hosted internal Heroku for Kubernetes. One Helm chart in, every git push out." />
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://p0intman.github.io/liftwork/" />
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23E5532A'/%3E%3Crect x='18' y='6' width='8' height='8' rx='2' fill='%23fff'/%3E%3C/svg%3E" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+
+<header class="topnav">
+  <a class="brand" href="./" aria-label="liftwork home">
+    <span class="glyph" aria-hidden="true"></span>
+    <span class="brand-text">liftwork</span>
+  </a>
+  <nav class="topnav-links" aria-label="Primary">
+    <a href="#features">Features</a>
+    <a href="#install">Install</a>
+    <a href="./deck.html">Deck</a>
+    <a class="repo-link" href="https://github.com/P0intMaN/liftwork" target="_blank" rel="noopener">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+        <path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-1.96c-3.2.69-3.87-1.54-3.87-1.54-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.52-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.19.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.5 3.18-1.19 3.18-1.19.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.4-5.26 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.68.8.56 4.57-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5Z"/>
+      </svg>
+      <span>GitHub</span>
+      <span class="star-pill mono" id="star-pill" hidden>★ <span id="star-count">…</span></span>
+    </a>
+  </nav>
+</header>
+
+<main>
+  <!-- HERO ----------------------------------------------------------------- -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <span class="eyebrow">Self-hosted · Apache 2.0</span>
+        <h1>
+          One Helm chart in.<br />
+          Every <em>git push</em> out.
+        </h1>
+        <p class="lede">
+          liftwork is a plug-and-play build &amp; deploy platform for Kubernetes —
+          a self-hosted internal Heroku. Drop the chart into your cluster, point
+          at a repo, and a <span class="mono">git push</span> becomes a deploy.
+          On infrastructure you own.
+        </p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="./deck.html">
+            Launch deck
+            <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+              <path fill="currentColor" d="M3 8h9.5M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/P0intMaN/liftwork" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-1.96c-3.2.69-3.87-1.54-3.87-1.54-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.52-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.19.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.5 3.18-1.19 3.18-1.19.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.4-5.26 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.68.8.56 4.57-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5Z"/>
+            </svg>
+            View on GitHub
+          </a>
+          <a class="btn btn-link" href="#install">Install in 60 seconds →</a>
+        </div>
+      </div>
+
+      <aside class="hero-term" aria-label="Example session">
+        <div class="term-dots"><span></span><span></span><span></span></div>
+        <pre class="mono"><span class="t-prompt">~/app on </span><span class="t-branch">main</span>
+<span class="t-prompt">$</span> <span class="t-cmd">git push origin main</span>
+
+<span class="t-out">→ liftwork: build queued (job 4f2a1c)</span>
+<span class="t-out">→ buildkit: pushed sha256:9c8e…@registry</span>
+<span class="t-out">→ deploy: rollout </span><span class="t-ok">ready</span><span class="t-out"> in 41s</span></pre>
+      </aside>
+    </div>
+  </section>
+
+  <!-- FEATURES ------------------------------------------------------------- -->
+  <section class="features" id="features">
+    <h2 class="section-title">Closes the gap between <em>git push</em> and a healthy rollout.</h2>
+
+    <div class="feature-grid">
+      <article class="feature">
+        <div class="feature-num mono">01</div>
+        <h3>Zero-config builds</h3>
+        <p>Language autodetect (Node, Python, Go, Rust, Java, Ruby, PHP, .NET) renders a Dockerfile if your repo doesn't ship one. <span class="mono">EXPOSE</span> and per-language port conventions become your defaults.</p>
+      </article>
+
+      <article class="feature">
+        <div class="feature-num mono">02</div>
+        <h3><span class="mono">liftwork.yaml</span> when you outgrow them</h3>
+        <p>Commit a <span class="mono">liftwork.yaml</span> at the repo root and the file wins — port, replicas, env (incl. Secret &amp; ConfigMap refs), health probes, ingress, resources. GitOps-native.</p>
+      </article>
+
+      <article class="feature">
+        <div class="feature-num mono">03</div>
+        <h3>BuildKit rootless, in-cluster</h3>
+        <p>No privileged containers, no external build farm. Cache, multi-arch, secret mounts — all the BuildKit features you'd expect, running as a Kubernetes Job inside <em>your</em> cluster.</p>
+      </article>
+
+      <article class="feature">
+        <div class="feature-num mono">04</div>
+        <h3>Diagnoses its own failures</h3>
+        <p>Rollout watcher classifies failures into actionable diagnoses — <em>"container is up but isn't listening on port 9999"</em> — and bails in 9–15s instead of timing out at 600s.</p>
+      </article>
+
+      <article class="feature">
+        <div class="feature-num mono">05</div>
+        <h3>Observable by default</h3>
+        <p>~18 Prometheus metrics out of the box, OTel traces across every job, two ready-to-import Grafana dashboards (Operations + SRE) committed alongside the chart.</p>
+      </article>
+
+      <article class="feature">
+        <div class="feature-num mono">06</div>
+        <h3>One Helm chart</h3>
+        <p>API, worker, dashboard, RBAC, ServiceMonitor, optional bundled Postgres + Redis. Namespace-aware values mean a single chart can isolate per-tenant installs.</p>
+      </article>
+    </div>
+  </section>
+
+  <!-- INSTALL -------------------------------------------------------------- -->
+  <section class="install" id="install">
+    <div class="install-grid">
+      <div>
+        <span class="eyebrow">Quick start</span>
+        <h2 class="section-title">Working install in 60 seconds.</h2>
+        <p class="lede-sm">
+          Bundled Postgres + Redis subcharts mean zero external dependencies for dev.
+          Production paths point at your managed services via
+          <span class="mono">externalDatabase.url</span> /
+          <span class="mono">externalRedis.url</span>.
+        </p>
+        <p class="lede-sm">
+          Full setup, per-tenant install, and prod recipes are documented
+          in <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/install.md" target="_blank" rel="noopener">docs/install.md</a>.
+        </p>
+      </div>
+
+      <pre class="install-term mono"><span class="t-h"># clone &amp; bootstrap</span>
+<span class="t-prompt">$</span> <span class="t-cmd">git clone https://github.com/P0intMaN/liftwork.git</span>
+<span class="t-prompt">$</span> <span class="t-cmd">cd liftwork &amp;&amp; helm dep update charts/liftwork</span>
+
+<span class="t-h"># install with bundled postgres + redis</span>
+<span class="t-prompt">$</span> <span class="t-cmd">helm upgrade --install lw charts/liftwork \</span>
+<span class="t-prompt"> </span> <span class="t-cmd">--namespace liftwork --create-namespace \</span>
+<span class="t-prompt"> </span> <span class="t-cmd">-f charts/liftwork/values.dev.yaml</span>
+
+<span class="t-out">→ migrate Job (alembic upgrade head)</span>
+<span class="t-out">→ api · worker · dashboard rolling out</span>
+<span class="t-ok">→ ready in ~30s</span>
+</pre>
+    </div>
+  </section>
+
+  <!-- ROADMAP -------------------------------------------------------------- -->
+  <section class="roadmap" id="status">
+    <span class="eyebrow">Status</span>
+    <h2 class="section-title">Pipeline is live. v2 is queued.</h2>
+
+    <div class="phase-grid">
+      <div class="phase phase-live">
+        <div class="phase-tag mono">v1 · live</div>
+        <h3>Today</h3>
+        <ul>
+          <li>Build &amp; deploy pipeline e2e against kind</li>
+          <li>BuildKit rootless · in-cluster Job</li>
+          <li><span class="mono">liftwork.yaml</span> (file-wins config)</li>
+          <li>Language-aware defaults · rollout diagnostics</li>
+          <li>OTel + Prometheus + Grafana dashboards</li>
+          <li>Helm chart · pnpm/uv monorepo · CI/CD</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="phase-tag mono next">in flight</div>
+        <h3>Now polishing</h3>
+        <ul>
+          <li>GitHub App install flow</li>
+          <li>Argo-style file/form drift UX</li>
+          <li>Bundled <span class="mono">liftwork-observability</span> subchart</li>
+          <li>Worker resumability (drop the single-replica cap)</li>
+        </ul>
+      </div>
+      <div class="phase">
+        <div class="phase-tag mono">v2 · soon</div>
+        <h3>Next</h3>
+        <ul>
+          <li>OIDC auth (Google, GitHub, Okta)</li>
+          <li>ECR · Quay · Docker Hub registry backends</li>
+          <li>Temporal queue (interface stubbed)</li>
+          <li>Preview environments per PR</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div class="brand">
+      <span class="glyph" aria-hidden="true"></span>
+      <span>liftwork</span>
+    </div>
+    <nav class="footer-links" aria-label="Footer">
+      <a href="https://github.com/P0intMaN/liftwork" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/install.md" target="_blank" rel="noopener">Install</a>
+      <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/liftwork-yaml.md" target="_blank" rel="noopener">liftwork.yaml</a>
+      <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/observability.md" target="_blank" rel="noopener">Observability</a>
+      <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/ci-cd.md" target="_blank" rel="noopener">CI/CD</a>
+      <a href="https://github.com/P0intMaN/liftwork/issues" target="_blank" rel="noopener">Issues</a>
+    </nav>
+    <div class="footer-meta mono">Apache 2.0 · v0.1.0</div>
+  </div>
+</footer>
+
+<script src="./script.js" defer></script>
+</body>
+</html>

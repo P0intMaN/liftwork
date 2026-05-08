@@ -1,0 +1,1443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>liftwork — Plug-and-play Kubernetes build &amp; deploy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23E5532A'/%3E%3Crect x='18' y='6' width='8' height='8' rx='2' fill='%23fff'/%3E%3C/svg%3E" />
+<style>
+  :root {
+    /* type scale — projection */
+    --type-display: 168px;
+    --type-title: 72px;
+    --type-subtitle: 44px;
+    --type-body: 32px;
+    --type-small: 26px;
+    --type-mono: 28px;
+    --type-eyebrow: 22px;
+
+    /* spacing */
+    --pad-top: 110px;
+    --pad-bottom: 110px;
+    --pad-x: 130px;
+    --gap-title: 56px;
+    --gap-item: 28px;
+
+    /* palette */
+    --bg: #F6F4EE;
+    --ink: #131210;
+    --ink-2: #2A2924;
+    --muted: #6E6A60;
+    --rule: #1312101A;
+    --paper: #FCFAF5;
+    --accent: #E5532A;     /* warm orange */
+    --accent-ink: #FFFFFF;
+    --night: #0F0E0C;
+    --night-2: #1B1A17;
+    --night-rule: #FFFFFF1A;
+    --night-muted: #B7B0A0;
+    --green: #4A7A3D;
+  }
+
+  html, body { margin: 0; padding: 0; background: #0a0a0a; }
+  body {
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .mono { font-family: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace; font-feature-settings: "ss01"; }
+
+  /* Make every clickable element in the deck visually consistent. */
+  a.deck-link {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px solid currentColor;
+    border-bottom-color: rgba(229, 83, 42, 0.45);
+    transition: color 120ms ease, border-color 120ms ease;
+  }
+  a.deck-link:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .accent a.deck-link, .close a.deck-link, .dark a.deck-link {
+    border-bottom-color: rgba(255, 255, 255, 0.5);
+  }
+  .accent a.deck-link:hover, .close a.deck-link:hover { color: #fff; border-bottom-color: #fff; }
+  .dark a.deck-link:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Pill-style links inherit the static pill look but become clickable. */
+  a.pill-link {
+    text-decoration: none;
+    color: var(--ink-2);
+    border: 1px solid var(--rule);
+    background: var(--paper);
+    border-radius: 999px;
+    padding: 8px 16px;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: border-color 120ms ease, transform 120ms ease, color 120ms ease;
+  }
+  a.pill-link:hover { border-color: var(--ink); transform: translateY(-1px); color: var(--ink); }
+  a.pill-link svg { display: block; }
+
+  deck-stage { background: #0a0a0a; }
+  deck-stage section {
+    background: var(--bg);
+    color: var(--ink);
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ---------- SLIDE FRAME ---------- */
+  .slide {
+    width: 100%; height: 100%;
+    box-sizing: border-box;
+    padding: var(--pad-top) var(--pad-x) var(--pad-bottom);
+    display: flex;
+    flex-direction: column;
+  }
+  .slide.dark { background: var(--night); color: #F6F1E5; }
+  .slide.paper { background: var(--paper); }
+  .slide.accent { background: var(--accent); color: var(--accent-ink); }
+
+  /* ---------- HEADER / FOOTER bands ---------- */
+  .topbar, .botbar {
+    position: absolute; left: 0; right: 0;
+    padding: 36px var(--pad-x);
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: var(--type-eyebrow);
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .topbar { top: 0; }
+  .botbar { bottom: 0; }
+  .dark .topbar, .dark .botbar { color: var(--night-muted); }
+  .accent .topbar, .accent .botbar { color: #ffffffb0; }
+
+  .brand {
+    display: inline-flex; align-items: center; gap: 14px;
+    font-weight: 600; color: var(--ink);
+    letter-spacing: -0.01em;
+    text-decoration: none;
+  }
+  .dark .brand { color: #F6F1E5; }
+  .accent .brand { color: #fff; }
+  .brand .glyph {
+    width: 22px; height: 22px;
+    background: var(--accent);
+    border-radius: 6px;
+    position: relative;
+  }
+  .brand .glyph::after {
+    content: ""; position: absolute; inset: 5px 5px auto auto;
+    width: 6px; height: 6px; border-radius: 2px; background: #fff;
+  }
+  .dark .brand .glyph { background: #F6F1E5; }
+  .dark .brand .glyph::after { background: var(--night); }
+
+  .eyebrow { letter-spacing: 0.16em; text-transform: uppercase; font-size: var(--type-eyebrow); font-weight: 500; color: var(--muted); }
+  .dark .eyebrow { color: var(--night-muted); }
+  .accent .eyebrow { color: #ffffffb8; }
+
+  /* ---------- COVER ---------- */
+  .cover {
+    padding: 0;
+    background: var(--bg);
+  }
+  .cover-grid {
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-columns: 1.15fr 1fr;
+  }
+  .cover-left {
+    padding: 110px 100px;
+    display: flex; flex-direction: column; justify-content: space-between;
+  }
+  .cover-right {
+    background: var(--night);
+    color: #F6F1E5;
+    padding: 110px 100px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover-right::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(180deg, transparent 0, transparent calc(100% - 240px), #0F0E0C 100%),
+      repeating-linear-gradient(0deg, #ffffff08 0 1px, transparent 1px 64px),
+      repeating-linear-gradient(90deg, #ffffff08 0 1px, transparent 1px 64px);
+    pointer-events: none;
+  }
+  .wordmark {
+    font-size: 220px;
+    font-weight: 600;
+    letter-spacing: -0.045em;
+    line-height: 0.92;
+    color: var(--ink);
+  }
+  .wordmark .dot {
+    display: inline-block;
+    width: 36px; height: 36px;
+    background: var(--accent);
+    border-radius: 10px;
+    transform: translateY(-6px);
+    margin-left: 4px;
+  }
+  .cover-tag {
+    font-size: 40px;
+    line-height: 1.18;
+    color: var(--ink-2);
+    max-width: 720px;
+    letter-spacing: -0.01em;
+    font-weight: 500;
+  }
+  .cover-tag em { font-style: normal; color: var(--accent); }
+  .cover-meta {
+    display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+    color: var(--muted); font-size: var(--type-small);
+  }
+  .cover-meta .pill {
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    padding: 8px 16px;
+    color: var(--ink-2);
+    background: var(--paper);
+  }
+
+  /* terminal in cover-right */
+  .term {
+    background: #0F0E0C;
+    border: 1px solid #ffffff1f;
+    border-radius: 14px;
+    padding: 28px 30px;
+    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-size: 24px;
+    line-height: 1.55;
+    color: #E6E1D2;
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 30px 80px #0008;
+  }
+  .term .dots { display: flex; gap: 8px; margin-bottom: 22px; }
+  .term .dots span { width: 12px; height: 12px; border-radius: 50%; background: #ffffff22; }
+  .term .dots span:first-child { background: #FF5F57; }
+  .term .dots span:nth-child(2) { background: #FEBC2E; }
+  .term .dots span:nth-child(3) { background: #28C840; }
+  .term .p { color: #8FAE6B; }
+  .term .c { color: #E6E1D2; }
+  .term .o { color: #B7B0A0; }
+  .term .a { color: #F2A87B; }
+
+  .hero-headline {
+    font-size: 72px;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.04;
+    color: #F6F1E5;
+    z-index: 1;
+    position: relative;
+  }
+  .hero-headline .accent { color: var(--accent); }
+
+  /* ---------- GENERIC ---------- */
+  .slide-title {
+    font-size: var(--type-title);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.02;
+    color: var(--ink);
+    max-width: 1400px;
+  }
+  .slide-title .em { color: var(--accent); }
+  .dark .slide-title { color: #F6F1E5; }
+  .accent .slide-title { color: #fff; }
+
+  .slide-deck-h {
+    display: flex; align-items: baseline; gap: 28px;
+    margin-bottom: var(--gap-title);
+  }
+  .slide-num {
+    font-family: 'Geist Mono', monospace;
+    font-size: var(--type-eyebrow);
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .dark .slide-num { color: var(--night-muted); }
+
+  .lede {
+    font-size: var(--type-subtitle);
+    line-height: 1.18;
+    color: var(--ink-2);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    max-width: 1400px;
+  }
+  .dark .lede { color: #D8D2C2; }
+
+  /* ---------- SLIDE 2 — ordeal ---------- */
+  .ordeal {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 22px;
+    margin-top: 44px;
+  }
+  .step {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 16px;
+    padding: 24px 24px 26px;
+    min-height: 170px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    position: relative;
+  }
+  .step .n {
+    font-family: 'Geist Mono', monospace;
+    font-size: 22px; color: var(--muted);
+  }
+  .step .t {
+    font-size: 30px; font-weight: 600; letter-spacing: -0.01em;
+    color: var(--ink); line-height: 1.12;
+  }
+  .step .strike {
+    position: absolute; left: 24px; right: 24px; top: 78px;
+    height: 1px; background: var(--rule);
+  }
+
+  .ordeal-tail {
+    margin-top: 36px;
+    display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+    color: var(--muted); font-size: 26px;
+  }
+  .ordeal-tail .arrow { color: var(--accent); font-family: 'Geist Mono', monospace; }
+  .ordeal-tail b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- SLIDE 3 — pull quote ---------- */
+  .pull {
+    flex: 1;
+    display: flex; flex-direction: column; justify-content: center;
+    gap: 56px;
+  }
+  .pull h2 {
+    margin: 0;
+    font-size: 132px;
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 0.98;
+    color: var(--ink);
+    max-width: 1500px;
+  }
+  .pull h2 .mono {
+    background: var(--ink);
+    color: var(--bg);
+    padding: 4px 20px 10px;
+    border-radius: 14px;
+    font-size: 96px;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+  }
+  .pull h2 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+  .pull-sub {
+    font-size: var(--type-subtitle);
+    color: var(--muted);
+    max-width: 1100px;
+    line-height: 1.2;
+  }
+
+  /* ---------- SLIDE 4 — architecture ---------- */
+  .arch {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.05fr 1.95fr;
+    gap: 56px;
+    align-items: stretch;
+  }
+  .arch-text { display: flex; flex-direction: column; gap: 24px; padding-top: 8px; }
+  .arch-text h3 { font-size: 36px; font-weight: 600; margin: 0; color: var(--ink); letter-spacing: -0.015em; }
+  .arch-text p { font-size: var(--type-body); line-height: 1.32; color: var(--ink-2); margin: 0; }
+  .arch-text .list { display: flex; flex-direction: column; gap: 16px; }
+  .arch-text .list .row { display: flex; gap: 18px; align-items: baseline; font-size: 28px; color: var(--ink-2); }
+  .arch-text .list .row .k { font-family: 'Geist Mono', monospace; color: var(--accent); font-size: 22px; min-width: 80px; }
+
+  .diagram {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 22px;
+    padding: 32px 36px 36px;
+    display: flex; flex-direction: column; gap: 20px;
+    position: relative;
+  }
+  .layer-label {
+    font-family: 'Geist Mono', monospace;
+    font-size: 20px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .row-flex { display: flex; gap: 20px; align-items: stretch; }
+  .node {
+    background: #fff;
+    border: 1px solid var(--rule);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 22px;
+    font-weight: 500;
+    color: var(--ink);
+    display: flex; flex-direction: column; gap: 2px;
+    flex: 1; min-height: 64px; justify-content: center;
+  }
+  .node .sub { font-family: 'Geist Mono', monospace; font-size: 16px; color: var(--muted); font-weight: 400; }
+  .node.accent { background: var(--ink); color: #F6F1E5; border-color: var(--ink); }
+  .node.accent .sub { color: #B7B0A0; }
+  .node.warm { background: #FCE7DA; border-color: #F2BFA0; color: #6E2D12; }
+  .node.warm .sub { color: #B86A45; }
+
+  .conn {
+    height: 2px;
+    background: repeating-linear-gradient(90deg, var(--rule) 0 6px, transparent 6px 12px);
+    align-self: center;
+    flex: 0 0 36px;
+  }
+  .vconn {
+    width: 2px; height: 28px;
+    background: repeating-linear-gradient(0deg, var(--rule) 0 6px, transparent 6px 12px);
+    margin-left: 28px;
+  }
+
+  /* ---------- SLIDE 5 — deploy pipeline ---------- */
+  .pipeline {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 14px;
+    align-items: stretch;
+    margin-top: 24px;
+  }
+  .pcol {
+    display: flex; flex-direction: column;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 14px;
+    padding: 26px 22px 28px;
+    position: relative;
+    min-height: 460px;
+  }
+  .pcol .pn {
+    font-family: 'Geist Mono', monospace;
+    font-size: 20px; color: var(--accent); font-weight: 500;
+    letter-spacing: 0.04em;
+  }
+  .pcol .pt {
+    margin-top: 14px;
+    font-size: 26px; font-weight: 600; line-height: 1.14; letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .pcol .pd {
+    margin-top: auto;
+    font-family: 'Geist Mono', monospace;
+    font-size: 17px; color: var(--muted);
+    line-height: 1.35;
+  }
+  .pcol.start { background: var(--ink); color: #F6F1E5; border-color: var(--ink); }
+  .pcol.start .pt, .pcol.start .pn { color: #F6F1E5; }
+  .pcol.start .pn { color: var(--accent); }
+  .pcol.start .pd { color: #B7B0A0; }
+  .pcol.end { background: var(--accent); border-color: var(--accent); }
+  .pcol.end .pt, .pcol.end .pn, .pcol.end .pd { color: #fff; }
+  .pcol.end .pn { color: #FFE3D6; }
+
+  .pipe-rail {
+    margin-top: 26px;
+    display: flex; align-items: center; gap: 18px;
+    color: var(--muted); font-size: var(--type-small);
+  }
+  .pipe-rail .tag { font-family: 'Geist Mono', monospace; padding: 6px 14px; border: 1px solid var(--rule); border-radius: 999px; color: var(--ink-2); }
+
+  /* ---------- SLIDE 6 — stack table ---------- */
+  .stack {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.5fr 1.4fr 2.1fr;
+    border-top: 1px solid var(--rule);
+    margin-top: 16px;
+    align-content: start;
+  }
+  .stack .h, .stack .c {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--rule);
+    font-size: 26px;
+    line-height: 1.22;
+    color: var(--ink-2);
+  }
+  .stack .h {
+    font-family: 'Geist Mono', monospace;
+    font-size: 20px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .stack .c.k { font-weight: 600; color: var(--ink); font-size: 26px; }
+  .stack .c.v { font-family: 'Geist Mono', monospace; font-size: 22px; color: var(--accent); }
+  .stack .c.w { color: var(--ink-2); }
+
+  /* ---------- SLIDE 7 — quick start ---------- */
+  .qs {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1.6fr;
+    gap: 56px;
+    align-items: stretch;
+  }
+  .qs-side { display: flex; flex-direction: column; gap: 32px; padding-top: 6px; }
+  .qs-side h3 { font-size: 38px; font-weight: 600; margin: 0; color: var(--ink); letter-spacing: -0.015em; line-height: 1.1; }
+  .qs-side p { font-size: 28px; line-height: 1.32; color: var(--ink-2); margin: 0; }
+  .req { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+  .req .row { display: flex; gap: 16px; align-items: center; font-size: 24px; color: var(--ink-2); }
+  .req .row .k { font-family: 'Geist Mono', monospace; color: var(--muted); font-size: 20px; min-width: 90px; }
+
+  .terminal {
+    background: var(--night);
+    border-radius: 18px;
+    padding: 36px 40px;
+    color: #E6E1D2;
+    font-family: 'Geist Mono', monospace;
+    font-size: 26px;
+    line-height: 1.6;
+    box-shadow: 0 30px 80px #0002;
+    border: 1px solid #00000010;
+  }
+  .terminal .dots { display: flex; gap: 8px; margin-bottom: 28px; }
+  .terminal .dots span { width: 12px; height: 12px; border-radius: 50%; background: #ffffff22; }
+  .terminal .dots span:first-child { background: #FF5F57; }
+  .terminal .dots span:nth-child(2) { background: #FEBC2E; }
+  .terminal .dots span:nth-child(3) { background: #28C840; }
+  .terminal .ln { display: block; }
+  .terminal .p { color: #8FAE6B; }
+  .terminal .c { color: #E6E1D2; }
+  .terminal .o { color: #B7B0A0; }
+  .terminal .a { color: #F2A87B; }
+  .terminal .h { color: #6E6A60; }
+
+  /* ---------- SLIDE 8 — repo layout ---------- */
+  .layout {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 56px;
+    align-items: stretch;
+  }
+  .tree {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 18px;
+    padding: 32px 36px;
+    font-family: 'Geist Mono', monospace;
+    font-size: 21px;
+    line-height: 1.65;
+    color: var(--ink-2);
+    white-space: pre;
+    margin: 0;
+  }
+  .tree .root { color: var(--ink); font-weight: 600; }
+  .tree .dir { color: var(--accent); }
+  .tree .note { color: var(--muted); }
+
+  .lnotes { display: flex; flex-direction: column; gap: 18px; padding-top: 4px; }
+  .lnote { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: baseline; padding-bottom: 18px; border-bottom: 1px solid var(--rule); }
+  .lnote:last-child { border-bottom: none; padding-bottom: 0; }
+  .lnote .k { font-family: 'Geist Mono', monospace; font-size: 22px; color: var(--accent); }
+  .lnote .v { font-size: 22px; color: var(--ink-2); line-height: 1.3; }
+
+  /* ---------- ROADMAP ---------- */
+  .road {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 28px;
+    margin-top: 30px;
+  }
+  .phase {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 18px;
+    padding: 36px 36px 40px;
+    display: flex; flex-direction: column; gap: 22px;
+  }
+  .phase .ph-tag {
+    font-family: 'Geist Mono', monospace;
+    font-size: 20px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .phase .ph-tag.now { color: var(--green); }
+  .phase .ph-tag.next { color: var(--accent); }
+  .phase h3 { margin: 0; font-size: 38px; font-weight: 600; letter-spacing: -0.015em; color: var(--ink); line-height: 1.1; }
+  .phase ul { margin: 8px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
+  .phase li { font-size: 24px; color: var(--ink-2); line-height: 1.3; padding-left: 24px; position: relative; }
+  .phase li::before {
+    content: ""; position: absolute; left: 0; top: 13px;
+    width: 10px; height: 2px; background: var(--ink-2);
+  }
+  .phase.live { background: var(--ink); color: #F6F1E5; border-color: var(--ink); }
+  .phase.live h3 { color: #F6F1E5; }
+  .phase.live li { color: #D8D2C2; }
+  .phase.live li::before { background: #F2A87B; }
+  .phase.live .ph-tag { color: #F2A87B; }
+
+  /* ---------- DIAGNOSTICS slide ---------- */
+  .diag {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.05fr 1.95fr;
+    gap: 56px;
+    align-items: stretch;
+    margin-top: 16px;
+  }
+  .diag-left h3 {
+    font-size: 36px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 16px;
+    color: var(--ink);
+  }
+  .diag-left p { margin: 0 0 22px; font-size: 26px; line-height: 1.34; color: var(--ink-2); }
+  .diag-stat {
+    display: flex; align-items: baseline; gap: 18px; margin-top: 22px;
+  }
+  .diag-stat .big { font-family: 'Geist Mono', monospace; font-size: 96px; line-height: 0.95; color: var(--accent); font-weight: 600; letter-spacing: -0.04em; }
+  .diag-stat .lbl { font-size: 22px; color: var(--muted); max-width: 280px; line-height: 1.32; }
+
+  .diag-right {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 18px;
+    padding: 26px 28px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .diag-row {
+    display: grid; grid-template-columns: 1.05fr 1.4fr 1.55fr;
+    gap: 20px; align-items: baseline;
+    padding: 14px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .diag-row:first-of-type { border-top: none; padding-top: 4px; }
+  .diag-row .cat { font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--accent); }
+  .diag-row .sig { font-family: 'Geist Mono', monospace; font-size: 17px; color: var(--ink-2); }
+  .diag-row .msg { font-size: 19px; color: var(--ink); line-height: 1.34; }
+
+  /* ---------- OBSERVABILITY slide ---------- */
+  .obs {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 56px;
+  }
+  .obs-left h3 { font-size: 36px; font-weight: 600; letter-spacing: -0.015em; margin: 0 0 16px; color: var(--ink); }
+  .obs-left p { font-size: 26px; line-height: 1.34; color: var(--ink-2); margin: 0 0 22px; }
+  .obs-pillar { display: grid; grid-template-columns: 90px 1fr; gap: 20px; padding: 14px 0; border-top: 1px solid var(--rule); align-items: baseline; }
+  .obs-pillar:first-of-type { border-top: none; }
+  .obs-pillar .k { font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--accent); letter-spacing: 0.06em; text-transform: uppercase; }
+  .obs-pillar .v { font-size: 22px; color: var(--ink-2); line-height: 1.3; }
+
+  .obs-right {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 18px;
+    padding: 24px 26px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  .obs-right .head {
+    font-family: 'Geist Mono', monospace; font-size: 18px; color: var(--muted);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .metric-list { display: flex; flex-direction: column; gap: 8px; }
+  .metric-list li {
+    list-style: none;
+    font-family: 'Geist Mono', monospace;
+    font-size: 17px; line-height: 1.4;
+    color: var(--ink-2);
+  }
+  .metric-list .name { color: var(--ink); font-weight: 600; }
+  .metric-list .lbl { color: var(--accent); }
+
+  /* ---------- SLIDE 10 — closing ---------- */
+  .close {
+    padding: 0;
+    background: var(--accent);
+    color: #fff;
+  }
+  .close-grid {
+    width: 100%; height: 100%;
+    display: grid;
+    grid-template-rows: 1fr auto;
+  }
+  .close-main {
+    padding: 130px 130px 0;
+    display: flex; flex-direction: column; justify-content: center; gap: 56px;
+  }
+  .close h2 {
+    margin: 0;
+    font-size: 156px;
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    line-height: 0.96;
+    max-width: 1500px;
+  }
+  .close .sub { font-size: 40px; color: #ffffffd6; max-width: 1100px; line-height: 1.2; }
+  .close-foot {
+    border-top: 1px solid #ffffff33;
+    padding: 44px 130px;
+    display: flex; align-items: baseline; justify-content: space-between;
+    font-family: 'Geist Mono', monospace;
+    font-size: 28px;
+    color: #ffffffe6;
+    flex-wrap: wrap;
+    gap: 32px;
+  }
+  .close-foot .links { display: flex; gap: 60px; flex-wrap: wrap; }
+  .close-foot a { color: #ffffffe6; text-decoration: none; border-bottom: 1px solid rgba(255,255,255,0.4); transition: border-color 120ms ease, color 120ms ease; }
+  .close-foot a:hover { color: #fff; border-bottom-color: #fff; }
+
+  /* keep slide content above the footer band */
+  .slide > .botbar { z-index: 2; }
+  .slide { padding-bottom: 120px; }
+
+  /* style for the live star pill on the cover */
+  .star-pill-deck {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 16px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--paper);
+    color: var(--ink-2);
+    text-decoration: none;
+    transition: border-color 120ms ease, transform 120ms ease, color 120ms ease;
+  }
+  .star-pill-deck:hover { border-color: var(--ink); transform: translateY(-1px); color: var(--ink); }
+  .star-pill-deck .star-num { font-weight: 600; color: var(--ink); }
+  .star-pill-deck .star-num.is-loading { color: var(--muted); }
+</style>
+
+<script type="application/json" id="speaker-notes">
+[
+  "Hey — thanks for taking a look at liftwork. The pitch in one breath: it's a self-hosted internal Heroku for Kubernetes. You install one Helm chart into your cluster, you point it at a Git repo, and from then on, git push is your deploy. That's the whole product. Everything in this deck is just unpacking that one sentence.",
+
+  "So here's what shipping a service to Kubernetes actually looks like today. You write a Dockerfile. You build the image, push it to a registry, you write the manifests or a Helm chart, you set up RBAC, you wire the secrets, you kubectl apply, and then you sit there refreshing kubectl get pods to see if the rollout actually went through. ArgoCD and Flux assume you've already done all of that work — they're the last mile, not the whole journey. And Heroku, Render, Railway — they solve this, but they pull you off your own infrastructure. There's a real gap in the middle, and that gap is what every platform team I've talked to is hand-rolling internally.",
+
+  "liftwork closes that gap. You install the Helm chart once into your cluster. You connect a repo through the dashboard or with a liftwork.yaml file. And from then on, a push to your tracked branch becomes a deploy — automatically. No Dockerfile, no manifests, no kubectl. We do the work; you stay on your own infrastructure.",
+
+  "Here's the architecture in one picture. There's a React dashboard up front for the humans, a FastAPI service handling the REST API and webhooks, Postgres for state. Redis with arq is the queue, fanning out to async workers that do the actual building and deploying. The build engine runs BuildKit rootless as a Kubernetes Job inside your own cluster — no privileged containers, no external build farm. The deploy engine talks to the Kubernetes API directly with server-side apply. And everything emits OpenTelemetry and Prometheus metrics out of the box. The whole thing — every box on this slide — ships as one Helm chart.",
+
+  "Now zoom into the seven things that happen between a git push and a healthy rollout. arq picks up a run_build job. The worker shallow-clones the target branch into a tempdir. The orchestrator detects the language and renders a Dockerfile.liftwork — unless your repo already committed its own, in which case it gets out of the way. The K8sBuildKitExecutor runs that build as a Kubernetes Job, tails the pod logs, and parses the digest off a marker line. The image gets pushed to the in-cluster registry. Status flips to succeeded, and if auto-deploy is on, run_deploy gets enqueued. The deploy executor server-side-applies a Deployment, a Service, optionally an Ingress, and watches the rollout until it's ready or it's failed. That's it.",
+
+  "A note on the v1 stack — these are choices, not defaults. FastAPI for async and OpenAPI and OTel out of the box. SQLAlchemy 2.0 async with Alembic — the boring, mature pick. Redis with arq for the queue, abstracted behind an interface so we can swap to Temporal in v2 without touching the worker code. BuildKit rootless because nobody wants privileged containers in their cluster anymore. GHCR for the registry, but the interface is stubbed so ECR, Quay, Docker Hub all slot in. Local password plus JWT for auth in v1; OIDC arrives in v2. And structlog plus OpenTelemetry plus Prometheus, all OTLP-exportable to whatever observability stack you already run.",
+
+  "If you want to run this locally, it really is about five minutes. Clone, make bootstrap — that does uv sync, pnpm install, and pre-commit. Copy the env file. make dev-up brings up Postgres and Redis through docker-compose. make dev-api gives you the FastAPI on port 7878 with the OpenAPI docs. In a second shell, make dev-worker. The worker runs in mock mode by default — it walks every state transition without touching a registry or a cluster, which is great for iterating on the API and the dashboard. When you're ready for the real thing, we have a kind-cluster path documented in the README that flips you onto BuildKit-in-pod and the in-cluster registry.",
+
+  "Here's the layout if you're going to poke around the code. Apps over apps — api, worker, dashboard. Packages slash core for shared stuff: settings, the async SQLAlchemy database layer, telemetry, the SQL models. Charts slash liftwork is the Helm chart, deploy is the docker-compose for local dev, and dot-github holds the CI workflows. The dashboard is in the apps directory and the chart polish is in charts.",
+
+  "One thing I'm proud of: liftwork diagnoses its own failures. The old behaviour was a 600-second opaque timeout — 'the rollout did not become ready' with no context. Now the watcher polls Pod statuses and namespace Events, classifies what it sees, and bails fast. If the container is up but isn't on the port you specified, it tells you to fix deploy.port in liftwork.yaml. Image pull fails, it tells you to check the registry. Health check returns 404, it tells you to fix the health path. Same module on the build side classifies registry-auth, dockerfile-syntax, and network failures. Every diagnosis bumps a labelled Prometheus counter so you can alert on each category.",
+
+  "Telemetry is wired through the whole product. Eighteen Prometheus instruments — build duration histograms by language and outcome, deploy duration by cluster, k8s API latency by verb, queue depth, cluster heartbeat, error breakdown by category. OTel root spans on every build and deploy so you can drop liftwork into your existing trace store. Two Grafana dashboards committed alongside the chart — Operations for the platform team, SRE for digging deeper. ServiceMonitor toggle plugs straight into kube-prometheus-stack with one --set flag.",
+
+  "Where we are and where we're going. Today's v1 has everything live — the build/deploy pipeline, language-aware defaults, rollout diagnostics, the liftwork.yaml schema, full telemetry, the Helm chart, and the GitHub Actions CI/CD pipeline are all done. Right now we're polishing the GitHub App install flow and the bundled observability subchart, and figuring out worker resumability so we can drop the single-replica cap. After that — OIDC, additional registry backends, Temporal queue swap, and per-PR preview environments. Most of v2 is wiring exercises rather than rewrites because the interfaces are already stubbed.",
+
+  "That's liftwork. The repo is at github.com slash P0intMaN slash liftwork — Apache 2.0, contributions very welcome. If this scratches an itch you've had, install the chart, point it at a repo, and let me know what breaks. Thanks for watching."
+]
+</script>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- ============== SLIDE 1 — Cover ============== -->
+  <section data-label="01 Cover">
+    <div class="slide cover">
+      <div class="cover-grid">
+        <div class="cover-left">
+          <a class="brand" href="./">
+            <span class="glyph"></span><span>liftwork</span>
+          </a>
+
+          <div>
+            <div class="wordmark">liftwork<span class="dot"></span></div>
+            <div class="cover-tag" style="margin-top: 56px;">
+              Plug-and-play Kubernetes <em>build &amp; deploy</em> platform.
+              A self-hosted internal Heroku — drop in a Helm chart, point at a repo,
+              get a deploy.
+            </div>
+          </div>
+
+          <div class="cover-meta">
+            <span class="pill mono">v1 · Apache 2.0</span>
+            <a class="pill-link mono" href="https://github.com/P0intMaN/liftwork" target="_blank" rel="noopener">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-1.96c-3.2.69-3.87-1.54-3.87-1.54-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.02 1.75 2.68 1.24 3.34.95.1-.74.4-1.24.72-1.52-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.18-3.1-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.18 1.19.92-.26 1.91-.39 2.89-.39.98 0 1.97.13 2.89.39 2.21-1.5 3.18-1.19 3.18-1.19.62 1.58.23 2.75.11 3.04.74.81 1.18 1.84 1.18 3.1 0 4.42-2.69 5.4-5.26 5.68.41.36.78 1.06.78 2.13v3.16c0 .31.21.68.8.56 4.57-1.52 7.85-5.83 7.85-10.91C23.5 5.65 18.35.5 12 .5Z"/>
+              </svg>
+              <span>github.com/P0intMaN/liftwork</span>
+            </a>
+            <a class="star-pill-deck mono" href="https://github.com/P0intMaN/liftwork/stargazers" target="_blank" rel="noopener" id="cover-star-pill" aria-label="Star liftwork on GitHub">
+              <span aria-hidden="true">★</span>
+              <span class="star-num is-loading" id="cover-star-num">stars</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="cover-right">
+          <div class="brand" style="color: #F6F1E5; z-index:1; position:relative;">
+            <span class="glyph"></span><span>README · Project overview</span>
+          </div>
+
+          <div class="hero-headline">
+            <span style="color:#B7B0A0; font-size:36px; font-weight:500; letter-spacing:0.04em; text-transform:uppercase; display:block; margin-bottom: 24px;">today</span>
+            10 steps, 3 tools,<br/>
+            half a day of yak-shaving.<br/>
+            <span style="color:#B7B0A0; font-size:36px; font-weight:500; letter-spacing:0.04em; text-transform:uppercase; display:block; margin: 36px 0 24px;">with liftwork</span>
+            <span class="accent">git push.</span>
+          </div>
+
+          <div class="term">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <div><span class="p">~/app</span><span class="o"> on </span><span class="a">main</span></div>
+            <div><span class="p">$</span> <span class="c">git push origin main</span></div>
+            <div><span class="o">→ liftwork: build queued (job 4f2a1c)</span></div>
+            <div><span class="o">→ buildkit: pushed sha256:9c8e…@registry</span></div>
+            <div><span class="o">→ deploy: rollout </span><span style="color:#8FAE6B">ready</span> <span class="o">in 41s</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 2 — The ordeal ============== -->
+  <section data-label="02 K8s onboarding tax">
+    <div class="slide">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">Problem</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">02</div>
+        <div class="eyebrow">The Kubernetes onboarding tax</div>
+      </div>
+
+      <div class="slide-title">
+        Getting any repo onto Kubernetes today is a <span class="em">10-step ordeal.</span>
+      </div>
+
+      <div class="ordeal">
+        <div class="step"><div class="n mono">01</div><div class="strike"></div><div class="t">Write a Dockerfile</div></div>
+        <div class="step"><div class="n mono">02</div><div class="strike"></div><div class="t">Build the image</div></div>
+        <div class="step"><div class="n mono">03</div><div class="strike"></div><div class="t">Push to a registry</div></div>
+        <div class="step"><div class="n mono">04</div><div class="strike"></div><div class="t">Write manifests or a Helm chart</div></div>
+        <div class="step"><div class="n mono">05</div><div class="strike"></div><div class="t">Set up RBAC</div></div>
+        <div class="step"><div class="n mono">06</div><div class="strike"></div><div class="t">Manage secrets</div></div>
+        <div class="step"><div class="n mono">07</div><div class="strike"></div><div class="t">kubectl apply</div></div>
+        <div class="step"><div class="n mono">08</div><div class="strike"></div><div class="t">Watch the rollout</div></div>
+        <div class="step"><div class="n mono">09</div><div class="strike"></div><div class="t">Wire up logs &amp; metrics</div></div>
+        <div class="step"><div class="n mono">10</div><div class="strike"></div><div class="t">Repeat for every service</div></div>
+      </div>
+
+      <div class="ordeal-tail">
+        <span class="arrow mono">→</span>
+        <span><b>ArgoCD &amp; Flux</b> assume you've already done all of that.</span>
+        <span class="arrow mono">·</span>
+        <span><b>Heroku, Render, Railway</b> lock you off your own cluster.</span>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">02 · Problem</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 3 — Promise ============== -->
+  <section data-label="03 git push to ship">
+    <div class="slide paper">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">Solution</div>
+      </div>
+
+      <div class="pull">
+        <div>
+          <div class="slide-num mono" style="margin-bottom: 28px;">03</div>
+          <h2>
+            Install once.<br/>
+            <em>git push</em> becomes a deploy.
+          </h2>
+        </div>
+        <div class="pull-sub">
+          One Helm chart in your cluster. Connect a repo through the dashboard
+          or a <a class="deck-link mono" href="https://github.com/P0intMaN/liftwork/blob/main/docs/liftwork-yaml.md" target="_blank" rel="noopener" style="color: var(--ink); background: #1312100D; padding: 2px 12px; border-radius: 8px;">liftwork.yaml</a> at the root.
+          From then on, your push is your deploy — on infrastructure you own.
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">03 · The promise</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 4 — Architecture ============== -->
+  <section data-label="04 Architecture">
+    <div class="slide">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">How it's built</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">04</div>
+        <div class="eyebrow">Architecture</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 50px;">One Helm chart, six moving parts.</div>
+
+      <div class="arch">
+        <div class="arch-text">
+          <h3>Boringly conventional<br/>where it counts.</h3>
+          <p>FastAPI in front. Postgres for state. Redis-backed workers for the heavy lifting. BuildKit rootless inside the cluster — no privileged containers, no external build farm.</p>
+          <div class="list">
+            <div class="row"><span class="k mono">UI</span><span>React + shadcn dashboard</span></div>
+            <div class="row"><span class="k mono">API</span><span>FastAPI · webhooks · OpenAPI</span></div>
+            <div class="row"><span class="k mono">QUEUE</span><span>Redis + arq (asyncio-native)</span></div>
+            <div class="row"><span class="k mono">BUILD</span><span>BuildKit rootless · in-cluster Job</span></div>
+            <div class="row"><span class="k mono">DEPLOY</span><span>k8s python client · server-side apply</span></div>
+            <div class="row"><span class="k mono">OBS</span><span>OpenTelemetry + Prometheus</span></div>
+          </div>
+        </div>
+
+        <div class="diagram">
+          <div>
+            <div class="layer-label">Surface</div>
+            <div class="row-flex" style="margin-top: 12px;">
+              <div class="node">React + shadcn UI<span class="sub mono">apps/dashboard</span></div>
+              <div class="conn"></div>
+              <div class="node accent">FastAPI<span class="sub mono">apps/api</span></div>
+              <div class="conn"></div>
+              <div class="node">Postgres<span class="sub mono">SQLAlchemy 2.0 async</span></div>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:center; gap: 20px;">
+            <div style="flex: 1; height: 1px; background: var(--rule);"></div>
+            <div class="mono" style="font-size: 18px; color: var(--muted); letter-spacing:0.08em;">JOBS</div>
+            <div style="flex: 1; height: 1px; background: var(--rule);"></div>
+          </div>
+
+          <div>
+            <div class="layer-label">Engine</div>
+            <div class="row-flex" style="margin-top: 12px;">
+              <div class="node">Redis<span class="sub mono">arq queue</span></div>
+              <div class="conn"></div>
+              <div class="node accent">Worker(s)<span class="sub mono">apps/worker</span></div>
+              <div class="conn"></div>
+              <div style="display: flex; flex-direction: column; gap: 12px; flex: 1.2;">
+                <div class="node warm">Build engine<span class="sub mono">BuildKit · in-cluster Job</span></div>
+                <div class="node warm">Deploy engine<span class="sub mono">k8s python client · SSA</span></div>
+                <div class="node">OTel + Prometheus<span class="sub mono">OTLP-exportable</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">04 · Architecture</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 5 — Pipeline ============== -->
+  <section data-label="05 Deploy pipeline">
+    <div class="slide">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">git push → ready</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">05</div>
+        <div class="eyebrow">The deploy pipeline</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 12px;">Seven steps from <span class="em">git push</span> to a healthy rollout.</div>
+
+      <div class="pipeline">
+        <div class="pcol start">
+          <div class="pn mono">git push</div>
+          <div class="pt">Webhook fires; arq enqueues run_build</div>
+          <div class="pd">apps/api</div>
+        </div>
+        <div class="pcol">
+          <div class="pn mono">01</div>
+          <div class="pt">Worker shallow-clones the branch into a tempdir</div>
+          <div class="pd">git clone --depth 1</div>
+        </div>
+        <div class="pcol">
+          <div class="pn mono">02</div>
+          <div class="pt">Orchestrator detects language, renders Dockerfile.liftwork</div>
+          <div class="pd">unless repo<br/>committed its own</div>
+        </div>
+        <div class="pcol">
+          <div class="pn mono">03</div>
+          <div class="pt">BuildKit Job runs in-cluster; logs streamed back</div>
+          <div class="pd">moby/buildkit:rootless<br/>batch/v1 Job</div>
+        </div>
+        <div class="pcol">
+          <div class="pn mono">04</div>
+          <div class="pt">Image pushed to in-cluster registry; status → succeeded</div>
+          <div class="pd">parses<br/>LIFTWORK_DIGEST=…</div>
+        </div>
+        <div class="pcol">
+          <div class="pn mono">05</div>
+          <div class="pt">If auto_deploy, run_deploy is enqueued</div>
+          <div class="pd">configurable<br/>per-app</div>
+        </div>
+        <div class="pcol end">
+          <div class="pn mono">06 → ready</div>
+          <div class="pt">Server-side apply Deployment + Service (+ Ingress); watch rollout</div>
+          <div class="pd">apps_v1.read_<br/>namespaced_deployment</div>
+        </div>
+      </div>
+
+      <div class="pipe-rail">
+        <span>Mock-mode default for local dev</span>
+        <span class="mono" style="color: var(--rule); border:none">·</span>
+        <span class="tag mono">LIFTWORK_WORKER__EXECUTOR=kind</span>
+        <span>flips on the real BuildKit-in-pod path</span>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">05 · Deploy pipeline</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 6 — Stack table ============== -->
+  <section data-label="06 Stack choices">
+    <div class="slide paper">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">v1 stack</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">06</div>
+        <div class="eyebrow">Stack choices</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 14px;">Boring, mature, OTel-first.</div>
+
+      <div class="stack">
+        <div class="h">Concern</div>
+        <div class="h">Choice</div>
+        <div class="h">Why</div>
+
+        <div class="c k">Web framework</div>
+        <div class="c v">FastAPI + uvicorn</div>
+        <div class="c w">async, OpenAPI generated, OTel-first</div>
+
+        <div class="c k">ORM</div>
+        <div class="c v">SQLAlchemy 2.0 async + Alembic</div>
+        <div class="c w">industry standard, mature async</div>
+
+        <div class="c k">Queue</div>
+        <div class="c v">Redis + arq</div>
+        <div class="c w">asyncio-native, light; abstracted for v2 swap to Temporal</div>
+
+        <div class="c k">Build executor</div>
+        <div class="c v">BuildKit rootless · in-cluster Job</div>
+        <div class="c w">no privileged containers; cache + multi-arch + secret mounts</div>
+
+        <div class="c k">Registry</div>
+        <div class="c v">GHCR (ECR / Quay / Hub stubbed)</div>
+        <div class="c w">repo-native; works out of the box</div>
+
+        <div class="c k">Auth (v1)</div>
+        <div class="c v">local password + JWT</div>
+        <div class="c w">OIDC arrives in v2</div>
+
+        <div class="c k">Telemetry</div>
+        <div class="c v">structlog + OpenTelemetry + Prometheus</div>
+        <div class="c w">OTLP-exportable to Datadog, HyperDX, Grafana</div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">06 · Stack choices</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 7 — Quick start ============== -->
+  <section data-label="07 Quick start">
+    <div class="slide dark">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">Local dev</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">07</div>
+        <div class="eyebrow">Quick start</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 50px; color: #F6F1E5;">Five minutes to a running API on your laptop.</div>
+
+      <div class="qs">
+        <div class="qs-side">
+          <h3>WSL2 / Ubuntu<br/>or any POSIX shell.</h3>
+          <p>Mock-mode worker walks every state transition without touching a registry or a cluster — perfect for iterating on the API and dashboard. The kind path in the README turns on the real BuildKit-in-pod build when you're ready.</p>
+          <div class="req">
+            <div class="row"><span class="k mono">runtime</span><span>Python 3.12 · Node 20+ · pnpm · uv</span></div>
+            <div class="row"><span class="k mono">infra</span><span>Docker · kubectl · Helm</span></div>
+            <div class="row"><span class="k mono">api</span><span>localhost:7878/docs</span></div>
+          </div>
+        </div>
+
+        <div class="terminal">
+          <div class="dots"><span></span><span></span><span></span></div>
+          <span class="ln"><span class="h"># clone &amp; bootstrap</span></span>
+          <span class="ln"><span class="p">$</span> <span class="c">git clone https://github.com/P0intMaN/liftwork.git</span></span>
+          <span class="ln"><span class="p">$</span> <span class="c">cd liftwork &amp;&amp; make bootstrap</span></span>
+          <span class="ln"><span class="o">→ uv sync · pnpm install · pre-commit install</span></span>
+          <br/>
+          <span class="ln"><span class="h"># bring up postgres + redis</span></span>
+          <span class="ln"><span class="p">$</span> <span class="c">cp .env.example .env</span></span>
+          <span class="ln"><span class="p">$</span> <span class="c">make dev-up</span></span>
+          <br/>
+          <span class="ln"><span class="h"># two shells, side by side</span></span>
+          <span class="ln"><span class="p">$</span> <span class="c">make dev-api</span>      <span class="o"># http://localhost:7878/docs</span></span>
+          <span class="ln"><span class="p">$</span> <span class="c">make dev-worker</span>   <span class="o"># mock mode — no cluster needed</span></span>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono" style="color:#B7B0A0;">07 · Quick start</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 8 — Repo layout ============== -->
+  <section data-label="08 Repo layout">
+    <div class="slide">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">Codebase</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">08</div>
+        <div class="eyebrow">What's in the repo</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 50px;">A tidy monorepo. <span class="em">pnpm + uv</span> workspaces.</div>
+
+      <div class="layout">
+        <div class="tree"><span class="root">liftwork/</span>
+├── <span class="dir">apps/</span>
+│   ├── <span class="dir">api/</span>          <span class="note"># FastAPI · REST · webhooks</span>
+│   ├── <span class="dir">worker/</span>       <span class="note"># arq build + deploy runner</span>
+│   └── <span class="dir">dashboard/</span>    <span class="note"># Vite + React + shadcn</span>
+├── <span class="dir">packages/</span>
+│   └── <span class="dir">core/</span>         <span class="note"># settings · db · telemetry · models</span>
+├── <span class="dir">charts/liftwork/</span>  <span class="note"># Helm chart + Grafana dashboards</span>
+├── <span class="dir">deploy/</span>           <span class="note"># docker-compose · kind cluster</span>
+├── <span class="dir">docs/</span>             <span class="note"># install · liftwork.yaml · obs</span>
+├── <span class="dir">site/</span>             <span class="note"># GitHub Pages landing + deck</span>
+└── <span class="dir">.github/</span>          <span class="note"># CI · release · e2e workflows</span>
+        </div>
+
+        <div class="lnotes">
+          <div class="lnote">
+            <div class="k mono">apps/api</div>
+            <div class="v">FastAPI service. REST endpoints, GitHub webhooks, dashboard backend, OTel-instrumented end-to-end.</div>
+          </div>
+          <div class="lnote">
+            <div class="k mono">apps/worker</div>
+            <div class="v">arq worker. Runs build + deploy jobs. Mock + kind executors today; the interface is what slots Temporal in for v2.</div>
+          </div>
+          <div class="lnote">
+            <div class="k mono">packages/core</div>
+            <div class="v">Settings, async SQLAlchemy database layer, telemetry plumbing, and the SQL models — shared across api and worker.</div>
+          </div>
+          <div class="lnote">
+            <div class="k mono">charts/liftwork</div>
+            <div class="v">One Helm chart. Optional bundled Postgres &amp; Redis subcharts so you can install with zero external dependencies.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">08 · Repo layout</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 9 — Diagnoses its own failures ============== -->
+  <section data-label="09 Rollout diagnostics">
+    <div class="slide">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">Self-diagnosing</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">09</div>
+        <div class="eyebrow">Diagnoses its own failures</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 28px;">From <span class="em">600s opaque timeout</span> to <span class="em">~12s actionable error.</span></div>
+
+      <div class="diag">
+        <div class="diag-left">
+          <h3>Polls Pod statuses + namespace Events; classifies; bails fast.</h3>
+          <p>Terminal signals (image-pull, crash-loop, config error) bail immediately. Soft signals (probe failures, scheduling) require three consecutive observations — slow-start apps still get a chance.</p>
+          <p>Each diagnosis bumps a labelled Prom counter so you can alert on each category. Build errors classify too — <span class="mono">registry_auth</span>, <span class="mono">dockerfile_syntax</span>, <span class="mono">network</span>.</p>
+          <div class="diag-stat">
+            <div class="big">~12s</div>
+            <div class="lbl">median fail-fast for the most common breakage modes — vs. 600s before.</div>
+          </div>
+        </div>
+
+        <div class="diag-right">
+          <div class="diag-row">
+            <div class="cat">image_pull_failed</div>
+            <div class="sig">ImagePullBackOff / ErrImagePull</div>
+            <div class="msg">"image &lt;ref&gt; couldn't be pulled. Check <span class="mono">image_repository</span> and that the registry is reachable."</div>
+          </div>
+          <div class="diag-row">
+            <div class="cat">crash_loop</div>
+            <div class="sig">CrashLoopBackOff · exitCode</div>
+            <div class="msg">"container is crash-looping (exit code 137). Check the container logs — your app exits on start."</div>
+          </div>
+          <div class="diag-row">
+            <div class="cat">port_mismatch</div>
+            <div class="sig">probe: connection refused</div>
+            <div class="msg">"container is up but isn't listening on port 9999. Set <span class="mono">deploy.port</span> in liftwork.yaml."</div>
+          </div>
+          <div class="diag-row">
+            <div class="cat">health_path_404</div>
+            <div class="sig">probe: HTTP 404</div>
+            <div class="msg">"container responds on :3000 but /healthz returned 404. Set <span class="mono">deploy.health_check.path</span>."</div>
+          </div>
+          <div class="diag-row">
+            <div class="cat">config_error</div>
+            <div class="sig">CreateContainerConfigError</div>
+            <div class="msg">"container failed to start: secret 'my-db' not found in namespace."</div>
+          </div>
+          <div class="diag-row">
+            <div class="cat">registry_auth</div>
+            <div class="sig">denied: requested access denied</div>
+            <div class="msg">"registry rejected the image push: authentication failed. Configure push credentials."</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">09 · Diagnostics</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 10 — Observability ============== -->
+  <section data-label="10 Observability">
+    <div class="slide paper">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">OTel-first</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">10</div>
+        <div class="eyebrow">Observable by default</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 28px;">Logs · metrics · traces wired through the whole product.</div>
+
+      <div class="obs">
+        <div class="obs-left">
+          <h3>Three pillars, BYO collector.</h3>
+          <p>Default install emits everything; bring your own collectors. <span class="mono">--set serviceMonitor.enabled=true</span> drops it straight into kube-prometheus-stack.</p>
+
+          <div class="obs-pillar">
+            <div class="k">Logs</div>
+            <div class="v">JSON structlog to stdout — one line per event with request_id, build_id, deploy_id propagated.</div>
+          </div>
+          <div class="obs-pillar">
+            <div class="k">Metrics</div>
+            <div class="v">~18 Prometheus instruments with bounded labels — build/deploy duration, k8s API latency, queue depth, error categories.</div>
+          </div>
+          <div class="obs-pillar">
+            <div class="k">Traces</div>
+            <div class="v">OTel root spans on every build &amp; deploy job. OTLP-exportable to Tempo, Datadog, HyperDX, Honeycomb.</div>
+          </div>
+          <div class="obs-pillar">
+            <div class="k">Boards</div>
+            <div class="v">Two Grafana JSONs at <a class="deck-link mono" href="https://github.com/P0intMaN/liftwork/tree/main/charts/liftwork/dashboards" target="_blank" rel="noopener">charts/liftwork/dashboards</a> — Operations + SRE.</div>
+          </div>
+        </div>
+
+        <div class="obs-right">
+          <div class="head">/metrics — selected</div>
+          <ul class="metric-list">
+            <li><span class="name">liftwork_builds_finished_total</span>{<span class="lbl">language,status</span>}</li>
+            <li><span class="name">liftwork_build_duration_seconds</span>_bucket{<span class="lbl">language,status,le</span>}</li>
+            <li><span class="name">liftwork_build_image_bytes</span>_bucket{<span class="lbl">language,le</span>}</li>
+            <li><span class="name">liftwork_deploys_finished_total</span>{<span class="lbl">cluster,outcome</span>}</li>
+            <li><span class="name">liftwork_deploy_duration_seconds</span>_bucket{<span class="lbl">cluster,outcome,le</span>}</li>
+            <li><span class="name">liftwork_active_builds</span></li>
+            <li><span class="name">liftwork_active_deploys</span></li>
+            <li><span class="name">liftwork_k8s_api_latency_seconds</span>_bucket{<span class="lbl">verb,resource,le</span>}</li>
+            <li><span class="name">liftwork_k8s_api_errors_total</span>{<span class="lbl">verb,resource,status</span>}</li>
+            <li><span class="name">liftwork_cluster_healthy</span>{<span class="lbl">cluster</span>}</li>
+            <li><span class="name">liftwork_queue_depth</span>{<span class="lbl">job</span>}</li>
+            <li><span class="name">liftwork_webhooks_received_total</span>{<span class="lbl">event,action</span>}</li>
+            <li><span class="name">liftwork_errors_total</span>{<span class="lbl">category,stage</span>}</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">10 · Observability</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 11 — Roadmap ============== -->
+  <section data-label="11 Roadmap">
+    <div class="slide">
+      <div class="topbar">
+        <a class="brand" href="./"><span class="glyph"></span><span>liftwork</span></a>
+        <div class="eyebrow">Status</div>
+      </div>
+
+      <div class="slide-deck-h" style="margin-top: 60px;">
+        <div class="slide-num">11</div>
+        <div class="eyebrow">Roadmap</div>
+      </div>
+
+      <div class="slide-title" style="margin-bottom: 12px;">Pipeline runs end-to-end. Polish, then v2.</div>
+
+      <div class="road">
+        <div class="phase live">
+          <div class="ph-tag mono">v1 · live</div>
+          <h3>Today</h3>
+          <ul>
+            <li>Build &amp; deploy pipeline e2e against kind</li>
+            <li>BuildKit rootless · in-cluster Job</li>
+            <li>Server-side apply · rollout watch</li>
+            <li>liftwork.yaml file-wins config</li>
+            <li>Language-aware defaults · rollout diagnostics</li>
+            <li>OTel + Prometheus + Grafana dashboards</li>
+            <li>Helm chart · CI/CD · container images</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <div class="ph-tag mono next">in flight</div>
+          <h3>Now polishing</h3>
+          <ul>
+            <li>GitHub App install flow</li>
+            <li>Argo-style file/form drift UX</li>
+            <li>Bundled liftwork-observability subchart</li>
+            <li>Worker resumability (drop the single-replica cap)</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <div class="ph-tag mono">v2 · soon</div>
+          <h3>After that</h3>
+          <ul>
+            <li>OIDC auth (Google, GitHub, Okta)</li>
+            <li>ECR · Quay · Docker Hub registry backends</li>
+            <li>Temporal queue (interface stubbed)</li>
+            <li>Preview environments per PR</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="botbar">
+        <div></div>
+        <div class="mono">11 · Roadmap</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============== SLIDE 12 — Closing ============== -->
+  <section data-label="12 Get started">
+    <div class="slide close">
+      <div class="close-grid">
+        <div class="close-main">
+          <div class="eyebrow" style="color:#ffffffb8;">Try it</div>
+          <h2>One chart in.<br/>Every push out.</h2>
+          <div class="sub">
+            Apache 2.0. Self-hosted. No cloud lock-in.
+            Install once into your cluster — the rest is just <span class="mono" style="background:#ffffff22; padding: 4px 14px; border-radius: 8px;">git push</span>.
+          </div>
+        </div>
+        <div class="close-foot">
+          <a href="https://github.com/P0intMaN/liftwork" target="_blank" rel="noopener">github.com/P0intMaN/liftwork</a>
+          <div class="links">
+            <a href="https://github.com/P0intMaN/liftwork#readme" target="_blank" rel="noopener">README</a>
+            <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/install.md" target="_blank" rel="noopener">install.md</a>
+            <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/liftwork-yaml.md" target="_blank" rel="noopener">liftwork.yaml</a>
+            <a href="https://github.com/P0intMaN/liftwork/blob/main/docs/observability.md" target="_blank" rel="noopener">observability</a>
+          </div>
+          <div>liftwork · v1</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</deck-stage>
+
+<script>
+  // Live star count for the cover slide. Reuses the same cache key as the
+  // landing page so a visitor going landing → deck (or vice-versa) avoids
+  // a second API call.
+  (() => {
+    const REPO = "P0intMaN/liftwork";
+    const KEY = "liftwork.star_cache";
+    const TTL = 30 * 60 * 1000;
+    const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n));
+    const render = (count) => {
+      const el = document.getElementById("cover-star-num");
+      if (!el) return;
+      el.textContent = `${fmt(count)} ★`;
+      el.classList.remove("is-loading");
+    };
+    const cached = (() => {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) return null;
+        const { count, at } = JSON.parse(raw);
+        return Date.now() - at > TTL ? null : count;
+      } catch { return null; }
+    })();
+    if (cached !== null) { render(cached); return; }
+    fetch(`https://api.github.com/repos/${REPO}`, { headers: { Accept: "application/vnd.github.v3+json" } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d || typeof d.stargazers_count !== "number") return;
+        try { localStorage.setItem(KEY, JSON.stringify({ count: d.stargazers_count, at: Date.now() })); } catch {}
+        render(d.stargazers_count);
+      })
+      .catch(() => { /* silent */ });
+  })();
+</script>
+<script src="./deck-stage.js"></script>
+</body>
+</html>

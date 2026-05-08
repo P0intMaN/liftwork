@@ -5,7 +5,10 @@
 > Self-hosted "internal Heroku" — drop in a Helm chart, point at a repo, get a deploy.
 
 [![ci](https://github.com/P0intMaN/liftwork/actions/workflows/ci.yaml/badge.svg)](https://github.com/P0intMaN/liftwork/actions/workflows/ci.yaml)
+[![pages](https://github.com/P0intMaN/liftwork/actions/workflows/pages.yaml/badge.svg)](https://github.com/P0intMaN/liftwork/actions/workflows/pages.yaml)
 [![license](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
+🌐 **Site & deck:** [p0intman.github.io/liftwork](https://p0intman.github.io/liftwork/) · [deck](https://p0intman.github.io/liftwork/deck.html)
 
 ---
 
