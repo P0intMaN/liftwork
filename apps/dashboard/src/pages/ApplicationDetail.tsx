@@ -125,18 +125,27 @@ export default function ApplicationDetailPage() {
                 {deploys.data.map((d) => (
                   <li
                     key={d.id}
-                    className="flex items-center justify-between rounded-md border border-border p-3"
+                    className={`rounded-md border p-3 ${
+                      d.error ? "border-destructive/40" : "border-border"
+                    }`}
                   >
-                    <div>
-                      <p className="text-sm font-medium">rev {d.revision}</p>
-                      <p className="font-mono text-[11px] text-muted-foreground">
-                        {d.image_tag}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {absTime(d.finished_at ?? d.created_at)}
-                      </p>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">rev {d.revision}</p>
+                        <p className="font-mono text-[11px] text-muted-foreground">
+                          {d.image_tag}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {absTime(d.finished_at ?? d.created_at)}
+                        </p>
+                      </div>
+                      <StatusBadge status={d.status} />
                     </div>
-                    <StatusBadge status={d.status} />
+                    {d.error && (
+                      <pre className="mt-2 whitespace-pre-wrap break-words rounded border border-destructive/40 bg-destructive/10 p-2 font-mono text-[11px] leading-relaxed text-destructive">
+                        {d.error}
+                      </pre>
+                    )}
                   </li>
                 ))}
               </ol>

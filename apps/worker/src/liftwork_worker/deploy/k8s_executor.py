@@ -18,9 +18,11 @@ from typing import Any, ClassVar, Final
 import anyio
 from kubernetes.client.exceptions import ApiException
 
+from liftwork_core import metrics
 from liftwork_core.build.protocols import LogSink
-from liftwork_core.deploy.labels import LIFTWORK_FIELD_MANAGER
+from liftwork_core.deploy.labels import LIFTWORK_FIELD_MANAGER, selector_labels
 from liftwork_core.deploy.protocols import RolloutOutcome
+from liftwork_worker.deploy.diagnostics import RolloutDiagnostic, diagnose_rollout
 from liftwork_worker.deploy.rollout import (
     RolloutSnapshot,
     evaluate_rollout,
@@ -29,12 +31,21 @@ from liftwork_worker.deploy.rollout import (
 )
 from liftwork_worker.k8s import K8sClients
 
+# Soft diagnostics (probe failures) need this many consecutive observations
+# before we bail — gives slow-starting apps a chance to recover.
+_SOFT_DIAGNOSIS_THRESHOLD: Final[int] = 3
+
 _NOT_FOUND: Final[int] = 404
 _CONFLICT: Final[int] = 409
 
 
 class DeployExecutorError(RuntimeError):
     pass
+
+
+class RolloutFailedError(RuntimeError):
+    """Rollout failed with a structured diagnostic. Caught by the orchestrator
+    and surfaced verbatim in `Deployment.error`."""
 
 
 class K8sDeployExecutor:
@@ -128,22 +139,36 @@ class K8sDeployExecutor:
             )
         return None
 
-    async def wait_for_rollout(
+    async def wait_for_rollout(  # noqa: PLR0912, PLR0915
         self,
         *,
         namespace: str,
         deployment_name: str,
         target_replicas: int,
         log_sink: LogSink,
-        timeout_seconds: int = 600,
+        timeout_seconds: int = 90,
     ) -> RolloutOutcome:
+        """Watch a rollout until ready, classified-failure, or timeout.
+
+        Failures raise `RolloutFailedError(message)` with an actionable
+        message (e.g. "container is up but isn't listening on port 8080");
+        the orchestrator's exception handler captures it into
+        `Deployment.error`. Generic timeout (no Pod/Event signal) maps to
+        `RolloutOutcome.timed_out` so the caller distinguishes "we don't
+        know what's wrong" from "we know exactly what's wrong."
+        """
         start = time.monotonic()
         last_progress: str | None = None
+        soft_streak = 0
+        last_soft_category: str | None = None
 
         while True:
             elapsed = time.monotonic() - start
             if elapsed > timeout_seconds:
-                await log_sink.write(f"rollout: timed out after {int(elapsed)}s")
+                metrics.record_error(category="rollout_timeout", stage="rollout")
+                await log_sink.write(
+                    f"rollout: no signal after {int(elapsed)}s — giving up"
+                )
                 return RolloutOutcome.timed_out
 
             try:
@@ -177,8 +202,100 @@ class K8sDeployExecutor:
             if outcome is RolloutOutcome.succeeded:
                 await log_sink.write("rollout: ready")
                 return RolloutOutcome.succeeded
+
+            # Classify whatever's wrong by inspecting Pods + Events.
+            diagnostic = await self._diagnose(
+                namespace=namespace,
+                deployment=deployment,
+            )
+            if diagnostic is not None:
+                if diagnostic.is_terminal:
+                    metrics.record_error(
+                        category=diagnostic.category.value, stage="rollout",
+                    )
+                    await log_sink.write(f"rollout: {diagnostic.message}")
+                    raise RolloutFailedError(diagnostic.message)
+                # Soft signal (probe failures, unscheduled pods) — give the
+                # app a few cycles to recover before bailing.
+                if last_soft_category == diagnostic.category.value:
+                    soft_streak += 1
+                else:
+                    soft_streak = 1
+                    last_soft_category = diagnostic.category.value
+                if soft_streak >= _SOFT_DIAGNOSIS_THRESHOLD:
+                    metrics.record_error(
+                        category=diagnostic.category.value, stage="rollout",
+                    )
+                    await log_sink.write(f"rollout: {diagnostic.message}")
+                    raise RolloutFailedError(diagnostic.message)
+            else:
+                soft_streak = 0
+                last_soft_category = None
+
             if outcome is RolloutOutcome.failed:
-                await log_sink.write(f"rollout: failed — {snapshot.progressing_failed_reason}")
-                return RolloutOutcome.failed
+                # Progressing=False but no Pod/Event diagnosis — generic.
+                metrics.record_error(category="rollout_failed", stage="rollout")
+                msg = (
+                    f"rollout stalled: "
+                    f"{snapshot.progressing_failed_reason or 'no detail from controller'}"
+                )
+                await log_sink.write(f"rollout: {msg}")
+                raise RolloutFailedError(msg)
 
             await asyncio.sleep(self._poll_interval)
+
+    async def _diagnose(
+        self,
+        *,
+        namespace: str,
+        deployment: Any,
+    ) -> RolloutDiagnostic | None:
+        """Fetch pods + events for this deployment and classify failures."""
+        app_slug = (deployment.metadata.labels or {}).get("app.kubernetes.io/name")
+        if app_slug is None:
+            return None
+        selector = ",".join(
+            f"{k}={v}" for k, v in selector_labels(app_slug).items()
+        )
+
+        try:
+            pods_resp, events_resp = await asyncio.gather(
+                anyio.to_thread.run_sync(
+                    partial(
+                        self._clients.core_v1.list_namespaced_pod,
+                        namespace=namespace,
+                        label_selector=selector,
+                        _request_timeout=5,
+                    )
+                ),
+                anyio.to_thread.run_sync(
+                    partial(
+                        self._clients.core_v1.list_namespaced_event,
+                        namespace=namespace,
+                        _request_timeout=5,
+                    )
+                ),
+            )
+        except ApiException:
+            # Best-effort — if the diagnostics API call fails, fall back to
+            # the unclassified RolloutOutcome.failed path.
+            return None
+
+        # Extract port + health_path from the deployment spec we just read.
+        port = 0
+        health_path = "/"
+        containers = deployment.spec.template.spec.containers
+        if containers:
+            ports = containers[0].ports or []
+            if ports:
+                port = ports[0].container_port or 0
+            probe = containers[0].readiness_probe
+            if probe is not None and getattr(probe, "http_get", None) is not None:
+                health_path = probe.http_get.path or "/"
+
+        return diagnose_rollout(
+            pods=pods_resp.items,
+            events=events_resp.items,
+            deploy_port=port,
+            deploy_health_path=health_path,
+        )

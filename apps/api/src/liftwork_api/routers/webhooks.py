@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from liftwork_api.dependencies import get_arq_pool, get_db, get_settings_dep
 from liftwork_api.schemas import WebhookAck
+from liftwork_core import metrics
 from liftwork_core.config import Settings
 from liftwork_core.db.models import BuildSource
 from liftwork_core.github import (
@@ -59,14 +60,20 @@ async def github_webhook(  # noqa: PLR0911
             signature_header=x_hub_signature_256,
         )
     except WebhookVerificationError as exc:
+        metrics.WEBHOOKS_RECEIVED.labels(
+            event=(x_github_event or "unknown"),
+            action="invalid_signature",
+        ).inc()
         log.warning("webhook.signature_invalid", reason=str(exc), delivery=x_github_delivery)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
     event = (x_github_event or "").lower()
     if event == "ping":
+        metrics.WEBHOOKS_RECEIVED.labels(event="ping", action="pong").inc()
         return WebhookAck(received=True, event="ping", delivery_id=x_github_delivery, action="pong")
 
     if event != "push":
+        metrics.WEBHOOKS_RECEIVED.labels(event=event or "unknown", action="ignored").inc()
         return WebhookAck(
             received=True,
             event=event,
@@ -80,6 +87,7 @@ async def github_webhook(  # noqa: PLR0911
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     if not push.is_branch_push or push.is_zero_after:
+        metrics.WEBHOOKS_RECEIVED.labels(event="push", action="ignored").inc()
         return WebhookAck(
             received=True,
             event="push",
@@ -94,6 +102,7 @@ async def github_webhook(  # noqa: PLR0911
         branch=push.branch,
     )
     if application is None:
+        metrics.WEBHOOKS_RECEIVED.labels(event="push", action="app_not_found").inc()
         return WebhookAck(
             received=True,
             event="push",
@@ -102,6 +111,7 @@ async def github_webhook(  # noqa: PLR0911
         )
 
     if not application.auto_deploy:
+        metrics.WEBHOOKS_RECEIVED.labels(event="push", action="ignored").inc()
         return WebhookAck(
             received=True,
             event="push",
@@ -116,6 +126,7 @@ async def github_webhook(  # noqa: PLR0911
         branch=push.branch,
     )
     if existing is not None:
+        metrics.WEBHOOKS_RECEIVED.labels(event="push", action="deduped").inc()
         return WebhookAck(
             received=True,
             event="push",
@@ -134,6 +145,7 @@ async def github_webhook(  # noqa: PLR0911
     await session.commit()
 
     await arq_pool.enqueue_job("run_build", build_run_id=str(run.id))
+    metrics.WEBHOOKS_RECEIVED.labels(event="push", action="enqueued").inc()
 
     log.info(
         "webhook.build_enqueued",

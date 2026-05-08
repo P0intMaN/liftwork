@@ -102,6 +102,14 @@ After that, a `git push` to a connected application will:
 
 `make kind-down` tears the liftwork namespace back down.
 
+## Configuring an app
+
+Apps are configured via the dashboard form **and/or** a `liftwork.yaml`
+committed at the root of the target repo. When both set the same field,
+the file wins. See [docs/liftwork-yaml.md](docs/liftwork-yaml.md) for
+the full schema (port, replicas, env vars, env-from-secret, health checks,
+ingress, resources, custom Dockerfile).
+
 ## Tech choices (v1)
 
 | Concern | Choice | Why |

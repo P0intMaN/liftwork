@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from liftwork_core.build.config import (
+    EnvConfigMapRef,
+    EnvSecretRef,
     LiftworkConfig,
     LiftworkConfigError,
     load_liftwork_config,
@@ -89,3 +91,61 @@ def test_ingress_default_disabled() -> None:
     cfg = LiftworkConfig()
     assert cfg.deploy.ingress.enabled is False
     assert cfg.deploy.ingress.host is None
+
+
+def test_env_accepts_strings_and_refs(tmp_path: Path) -> None:
+    p = tmp_path / "liftwork.yaml"
+    p.write_text(
+        textwrap.dedent(
+            """
+            deploy:
+              env:
+                PLAIN: hello
+                DB_URL:
+                  from_secret: my-db
+                  key: url
+                OTEL:
+                  from_configmap: telemetry
+                  key: otlp
+                SHORTHAND_KEY:
+                  from_secret: my-secret
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    cfg = load_liftwork_config(p)
+    assert cfg is not None
+    env = cfg.deploy.env
+    assert env["PLAIN"] == "hello"
+
+    db = env["DB_URL"]
+    assert isinstance(db, EnvSecretRef)
+    assert db.from_secret == "my-db"
+    assert db.key == "url"
+
+    otel = env["OTEL"]
+    assert isinstance(otel, EnvConfigMapRef)
+    assert otel.from_configmap == "telemetry"
+    assert otel.key == "otlp"
+
+    shorthand = env["SHORTHAND_KEY"]
+    assert isinstance(shorthand, EnvSecretRef)
+    assert shorthand.key is None  # caller defaults to env var name
+
+
+def test_env_secret_ref_rejects_unknown_keys(tmp_path: Path) -> None:
+    p = tmp_path / "liftwork.yaml"
+    p.write_text(
+        textwrap.dedent(
+            """
+            deploy:
+              env:
+                FOO:
+                  from_secret: x
+                  bogus: nope
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+    with pytest.raises(LiftworkConfigError, match="failed validation"):
+        load_liftwork_config(p)

@@ -11,9 +11,30 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from liftwork_core.build.language import Language
+
+
+class EnvSecretRef(BaseModel):
+    """Mount the value from an existing k8s Secret in the target namespace."""
+
+    model_config = ConfigDict(extra="forbid")
+    from_secret: str
+    key: str | None = None  # defaults to the env var name
+
+
+class EnvConfigMapRef(BaseModel):
+    """Mount the value from an existing k8s ConfigMap in the target namespace."""
+
+    model_config = ConfigDict(extra="forbid")
+    from_configmap: str
+    key: str | None = None  # defaults to the env var name
+
+
+# A single env var: literal string OR a Secret/ConfigMap reference. Pydantic
+# disambiguates by structure (presence of `from_secret` vs `from_configmap`).
+EnvValue = str | EnvSecretRef | EnvConfigMapRef
 
 
 class BuildSpec(BaseModel):
@@ -53,7 +74,7 @@ class DeploySpec(BaseModel):
     port: int = 8080
     replicas: int = 1
     command: list[str] | None = None
-    env: dict[str, str] = Field(default_factory=dict)
+    env: dict[str, EnvValue] = Field(default_factory=dict)
     resources: Resources = Field(default_factory=Resources)
     health_check: HealthCheck = Field(default_factory=HealthCheck)
     ingress: IngressSpec = Field(default_factory=IngressSpec)

@@ -198,6 +198,16 @@ class BuildRun(IdMixin, TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Raw `liftwork.yaml` text captured at build time. NULL means the
+    # repo had no `liftwork.yaml` and the deploy job should fall back to
+    # the inferred defaults (or the Application row's columns).
+    deploy_config_yaml: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Language/EXPOSE-derived defaults stamped at build time. NULL only
+    # for legacy rows built before this column existed.
+    inferred_defaults_json: Mapped[dict[str, str | int] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
 
 
 class Deployment(IdMixin, TimestampMixin, Base):

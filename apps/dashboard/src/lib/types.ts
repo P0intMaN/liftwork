@@ -57,6 +57,14 @@ export interface BuildRun {
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
+  deploy_config_yaml: string | null;
+  inferred_defaults: InferredDefaults | null;
+}
+
+export interface InferredDefaults {
+  port: number;
+  health_check_path: string;
+  source: string;
 }
 
 export type DeploymentStatus =

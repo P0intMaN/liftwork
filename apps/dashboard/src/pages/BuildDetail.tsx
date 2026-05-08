@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, GitCommit } from "lucide-react";
+import { ArrowLeft, GitCommit, Rocket } from "lucide-react";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,92 @@ export default function BuildDetailPage() {
               </dl>
             ) : (
               <Skeleton className="h-40 w-full" />
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {matchedDeploy && (
+        <section className="px-8 pb-6">
+          <Card
+            className={
+              matchedDeploy.status === "failed" || matchedDeploy.status === "rolled_back"
+                ? "border-destructive/40"
+                : undefined
+            }
+          >
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Rocket className="h-4 w-4 text-muted-foreground" />
+                Deploy result · rev {matchedDeploy.revision}
+              </CardTitle>
+              <CardDescription>
+                <StatusBadge status={matchedDeploy.status} />{" "}
+                <span className="ml-2">{absTime(matchedDeploy.finished_at ?? matchedDeploy.created_at)}</span>
+              </CardDescription>
+            </CardHeader>
+            {matchedDeploy.error && (
+              <CardContent>
+                <p className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+                  Diagnostic
+                </p>
+                <pre className="whitespace-pre-wrap break-words rounded-md border border-destructive/40 bg-destructive/10 p-3 font-mono text-xs leading-relaxed text-destructive">
+                  {matchedDeploy.error}
+                </pre>
+              </CardContent>
+            )}
+          </Card>
+        </section>
+      )}
+
+      <section className="grid gap-4 px-8 pb-6 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle>Inferred defaults</CardTitle>
+            <CardDescription>
+              Picked at build time from the repo. Overridden by liftwork.yaml.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {build.data?.inferred_defaults ? (
+              <dl className="grid gap-3 text-sm">
+                <Meta label="Port">
+                  <span className="font-mono text-xs">{build.data.inferred_defaults.port}</span>
+                </Meta>
+                <Meta label="Health path">
+                  <span className="font-mono text-xs">
+                    {build.data.inferred_defaults.health_check_path}
+                  </span>
+                </Meta>
+                <Meta label="Source">{build.data.inferred_defaults.source}</Meta>
+              </dl>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Legacy build — no defaults captured.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Deploy config (liftwork.yaml)</CardTitle>
+            <CardDescription>
+              {build.data?.deploy_config_yaml
+                ? "From liftwork.yaml — file wins over inferred defaults and form values."
+                : "No liftwork.yaml found — deploy uses the inferred defaults above."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {build.data?.deploy_config_yaml ? (
+              <pre className="max-h-96 overflow-auto rounded-md border bg-muted/40 p-3 font-mono text-xs leading-relaxed">
+                {build.data.deploy_config_yaml}
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Commit a <code className="font-mono text-xs">liftwork.yaml</code> at the repo root
+                to override port, replicas, env, health check, and more.
+              </p>
             )}
           </CardContent>
         </Card>

@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from liftwork_core.build.config import EnvConfigMapRef, EnvSecretRef
 from liftwork_core.deploy.labels import (
     base_annotations,
     base_labels,
@@ -18,6 +19,36 @@ from liftwork_core.deploy.labels import (
 from liftwork_core.deploy.protocols import DeployRequest
 
 _DNS_LABEL_RE = re.compile(r"[^a-z0-9-]+")
+
+
+def _render_env(name: str, value: str | EnvSecretRef | EnvConfigMapRef) -> dict[str, Any]:
+    """Translate an env entry into a Kubernetes container.env item.
+
+    Plain strings become {name, value}. Secret/ConfigMap refs become
+    {name, valueFrom}. The ref's `key` defaults to the env var name when
+    omitted, matching how kubectl-create-secret behaves.
+    """
+    if isinstance(value, EnvSecretRef):
+        return {
+            "name": name,
+            "valueFrom": {
+                "secretKeyRef": {
+                    "name": value.from_secret,
+                    "key": value.key or name,
+                },
+            },
+        }
+    if isinstance(value, EnvConfigMapRef):
+        return {
+            "name": name,
+            "valueFrom": {
+                "configMapKeyRef": {
+                    "name": value.from_configmap,
+                    "key": value.key or name,
+                },
+            },
+        }
+    return {"name": name, "value": value}
 
 
 def resource_name(app_slug: str, *, suffix: str = "") -> str:
@@ -53,7 +84,7 @@ def build_deployment_manifest(req: DeployRequest) -> dict[str, Any]:
                 "protocol": "TCP",
             }
         ],
-        "env": [{"name": k, "value": v} for k, v in spec.env.items()],
+        "env": [_render_env(name, value) for name, value in spec.env.items()],
         "resources": {
             "requests": {
                 "cpu": spec.resources.requests.cpu,

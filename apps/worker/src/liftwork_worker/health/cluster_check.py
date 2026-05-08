@@ -15,6 +15,7 @@ from typing import Any
 import anyio
 import structlog
 
+from liftwork_core import metrics
 from liftwork_core.config import K8sSettings
 from liftwork_core.db.models import Cluster, ClusterStatus
 from liftwork_core.repositories import ClusterRepository
@@ -45,6 +46,9 @@ async def check_clusters_health(ctx: dict[str, Any]) -> dict[str, int]:
             else:
                 unreachable += 1
             await session.commit()
+        metrics.CLUSTER_HEALTHY.labels(cluster=c.name).set(1 if ok else 0)
+        if ok:
+            metrics.CLUSTER_LAST_PROBE_AGE.labels(cluster=c.name).set(0)
         log.info("cluster.probe", cluster=c.name, healthy=ok)
 
     return {"healthy": healthy, "unreachable": unreachable}

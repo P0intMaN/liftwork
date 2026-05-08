@@ -1,0 +1,119 @@
+{
+  "annotations": { "list": [] },
+  "description": "Liftwork — SRE-facing view: k8s API health, registry latency, cluster heartbeat, error breakdown.",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "tags": ["liftwork", "sre"],
+  "time": { "from": "now-3h", "to": "now" },
+  "timezone": "browser",
+  "title": "Liftwork — SRE",
+  "uid": "liftwork-sre",
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0
+      },
+      {
+        "name": "cluster",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(liftwork_cluster_healthy, cluster)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Cluster availability",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "id": 1,
+      "targets": [{ "expr": "avg_over_time(liftwork_cluster_healthy{cluster=~\"$cluster\"}[1h])", "legendFormat": "{{cluster}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 2, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red" }, { "color": "yellow", "value": 0.99 }, { "color": "green", "value": 0.999 }] } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Cluster heartbeat (1 = healthy, 0 = unreachable)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 4 },
+      "id": 2,
+      "targets": [{ "expr": "liftwork_cluster_healthy{cluster=~\"$cluster\"}", "legendFormat": "{{cluster}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "decimals": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "k8s API latency p95 (by verb/resource)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "id": 10,
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (verb, resource, le) (rate(liftwork_k8s_api_latency_seconds_bucket[5m])))", "legendFormat": "{{verb}} {{resource}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "k8s API errors (by status class)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "id": 11,
+      "targets": [{ "expr": "sum by (verb, resource, status) (rate(liftwork_k8s_api_errors_total[5m]))", "legendFormat": "{{status}} {{verb}} {{resource}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Active jobs (gauges)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 12, "w": 8, "h": 7 },
+      "id": 12,
+      "targets": [
+        { "expr": "liftwork_active_builds", "legendFormat": "builds", "refId": "A" },
+        { "expr": "liftwork_active_deploys", "legendFormat": "deploys", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "min": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth (by job)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 8, "y": 12, "w": 8, "h": 7 },
+      "id": 13,
+      "targets": [{ "expr": "liftwork_queue_depth", "legendFormat": "{{job}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "min": 0 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Registry push p95",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 16, "y": 12, "w": 8, "h": 7 },
+      "id": 14,
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (le) (rate(liftwork_registry_push_duration_seconds_bucket[5m])))", "legendFormat": "p95", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "table",
+      "title": "Errors — breakdown (last 30m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 19, "w": 12, "h": 8 },
+      "id": 15,
+      "targets": [{ "expr": "sum by (category, stage) (increase(liftwork_errors_total[30m]))", "format": "table", "instant": true, "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP request latency p95 (by route)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 19, "w": 12, "h": 8 },
+      "id": 16,
+      "targets": [{ "expr": "histogram_quantile(0.95, sum by (route, le) (rate(liftwork_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{route}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    }
+  ]
+}

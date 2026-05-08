@@ -116,6 +116,12 @@ class BuildRunOut(BaseModel):
     started_at: datetime | None
     finished_at: datetime | None
     created_at: datetime
+    deploy_config_yaml: str | None = None
+    inferred_defaults: dict[str, str | int] | None = Field(
+        default=None,
+        validation_alias="inferred_defaults_json",
+        serialization_alias="inferred_defaults",
+    )
 
 
 class BuildEnqueuedResponse(BaseModel):

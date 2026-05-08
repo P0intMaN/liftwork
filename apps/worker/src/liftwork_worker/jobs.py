@@ -11,15 +11,23 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import time
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import structlog
+from opentelemetry import trace
 from sqlalchemy import func, select
 
-from liftwork_core.build.config import DeploySpec, HealthCheck
+from liftwork_core import metrics
+from liftwork_core.build.config import LiftworkConfigError
+from liftwork_core.build.defaults import DeployDefaults, infer_deploy_defaults
+from liftwork_core.build.diagnostics import classify_build_error
+from liftwork_core.build.effective import effective_deploy_spec, parse_liftwork_yaml
+from liftwork_core.build.language import detect_language
 from liftwork_core.db.models import (
     Application,
     BuildRun,
@@ -49,6 +57,7 @@ from liftwork_worker.redis_log import (
 from liftwork_worker.state import WorkerState, get_state
 
 log = structlog.get_logger("liftwork.worker.jobs")
+tracer = trace.get_tracer("liftwork.worker.jobs")
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +65,72 @@ log = structlog.get_logger("liftwork.worker.jobs")
 # ---------------------------------------------------------------------------
 
 
-async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
+@dataclass
+class _BuildMetricsState:
+    """Mutable per-build metrics scratchpad. ACTIVE_BUILDS is incremented
+    immediately so even early bail-outs decrement it; the rest of the
+    metrics are emitted on `flush()` from the run_build finally block."""
+
+    started_at: float = field(default_factory=time.perf_counter)
+    source: str = "unknown"
+    language: str = "unknown"
+    status: str = "failed"  # default — overridden on success path
+    image_bytes: int | None = None
+    _started: bool = False
+
+    def __post_init__(self) -> None:
+        metrics.ACTIVE_BUILDS.inc()
+        self._started = True
+
+    def flush(self) -> None:
+        if not self._started:
+            return
+        elapsed = time.perf_counter() - self.started_at
+        metrics.BUILDS_STARTED.labels(language=self.language, source=self.source).inc()
+        metrics.BUILDS_FINISHED.labels(language=self.language, status=self.status).inc()
+        metrics.BUILD_DURATION.labels(
+            language=self.language, status=self.status,
+        ).observe(elapsed)
+        if self.image_bytes is not None and self.image_bytes > 0:
+            metrics.BUILD_IMAGE_BYTES.labels(language=self.language).observe(self.image_bytes)
+        metrics.ACTIVE_BUILDS.dec()
+        self._started = False
+
+
+@dataclass
+class _DeployMetricsState:
+    started_at: float = field(default_factory=time.perf_counter)
+    cluster: str = "unknown"
+    outcome: str = "failed"
+    _started: bool = False
+
+    def __post_init__(self) -> None:
+        metrics.ACTIVE_DEPLOYS.inc()
+        self._started = True
+
+    def flush(self) -> None:
+        if not self._started:
+            return
+        elapsed = time.perf_counter() - self.started_at
+        metrics.DEPLOYS_STARTED.labels(cluster=self.cluster).inc()
+        metrics.DEPLOYS_FINISHED.labels(cluster=self.cluster, outcome=self.outcome).inc()
+        metrics.DEPLOY_DURATION.labels(
+            cluster=self.cluster, outcome=self.outcome,
+        ).observe(elapsed)
+        metrics.ACTIVE_DEPLOYS.dec()
+        self._started = False
+
+
+async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:  # noqa: PLR0915
     """Execute one queued BuildRun. Idempotent on repeated calls."""
+    with tracer.start_as_current_span("build.run") as span:
+        span.set_attribute("liftwork.build_id", build_run_id)
+        return await _run_build_impl(ctx, build_run_id, span)
+
+
+async def _run_build_impl(  # noqa: PLR0915
+    ctx: dict[str, Any], build_run_id: str, span: trace.Span,
+) -> dict[str, Any]:
     state = get_state(ctx)
     run_id = UUID(build_run_id)
     arq_pool = ctx.get("redis")  # arq sets this
@@ -68,12 +141,18 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
     sink = TeeLogSink([archive_sink, pubsub_sink])
 
     workspace = Path(tempfile.mkdtemp(prefix=f"liftwork-build-{run_id}-"))
+    # Metrics state — set as we learn it, emitted in the outer finally.
+    metrics_state = _BuildMetricsState()
     try:
         run, application = await _claim_build(state, run_id)
         if run is None:
             await sink.write(f"[build] {run_id} not found — nothing to do")
             return {"status": "missing"}
 
+        metrics_state.source = run.source.value
+        span.set_attribute("liftwork.application_slug", application.slug)
+        span.set_attribute("liftwork.branch", run.branch)
+        span.set_attribute("liftwork.commit_sha", run.commit_sha)
         await sink.write(f"[build] {run.commit_sha[:7]}@{run.branch} app={application.slug}")
 
         is_real = state.settings.worker.executor != "mock"
@@ -91,6 +170,7 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
                 )
                 workspace_for_orch = workspace / "repo"
             except GitCloneError as exc:
+                metrics.record_error(category="git_clone", stage="build")
                 await _mark_build(
                     state,
                     run_id,
@@ -100,6 +180,25 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
                 )
                 await sink.write(f"[build] git clone failed — {exc}")
                 return {"status": "failed", "error": str(exc)}
+
+            # File wins: capture liftwork.yaml from the cloned repo so the
+            # deploy job has authoritative config. Validation failures fail
+            # the build immediately with a clean error.
+            try:
+                yaml_text = _read_and_validate_liftwork_yaml(workspace_for_orch)
+            except LiftworkConfigError as exc:
+                metrics.record_error(category="config_invalid", stage="build")
+                await _mark_build(
+                    state,
+                    run_id,
+                    status=BuildStatus.failed,
+                    error=str(exc),
+                    log_excerpt=archive_sink.excerpt(),
+                )
+                await sink.write(f"[build] {exc}")
+                return {"status": "failed", "error": str(exc)}
+            if yaml_text is not None:
+                await sink.write("[build] parsed liftwork.yaml")
         else:
             # Mock path: the mock executor ignores the workspace; we just
             # need *something* the orchestrator's language detector can
@@ -109,6 +208,17 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
                 encoding="utf-8",
             )
             workspace_for_orch = workspace
+            yaml_text = None
+
+        metrics_state.language = detect_language(workspace_for_orch).language.value
+        span.set_attribute("liftwork.language", metrics_state.language)
+        await _capture_build_inputs(
+            state,
+            run_id,
+            workspace=workspace_for_orch,
+            yaml_text=yaml_text,
+            sink=sink,
+        )
 
         try:
             result = await orchestrate_build(
@@ -129,17 +239,31 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
                 log_sink=sink,
             )
         except Exception as exc:  # noqa: BLE001 — capture and persist any failure
+            log_tail = archive_sink.excerpt()
+            diagnosis = classify_build_error(
+                error_text=str(exc),
+                log_excerpt=log_tail,
+            )
+            if diagnosis is not None:
+                metrics.record_error(category=diagnosis.category.value, stage="build")
+                error_text = f"{diagnosis.message}\n\n--- raw ---\n{exc}"
+                await sink.write(f"[build] {diagnosis.message}")
+            else:
+                metrics.record_error(category="build_failed", stage="build")
+                error_text = str(exc)
             await _mark_build(
                 state,
                 run_id,
                 status=BuildStatus.failed,
-                error=str(exc),
-                log_excerpt=archive_sink.excerpt(),
+                error=error_text,
+                log_excerpt=log_tail,
             )
             await sink.write(f"[build] FAILED — {exc}")
             log.warning("build.failed", build_id=str(run_id), error=str(exc))
-            return {"status": "failed", "error": str(exc)}
+            return {"status": "failed", "error": error_text}
 
+        metrics_state.status = "succeeded"
+        metrics_state.image_bytes = getattr(result.image, "size_bytes", None)
         await _mark_build(
             state,
             run_id,
@@ -166,6 +290,7 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
             "image_digest": result.image.digest,
         }
     finally:
+        metrics_state.flush()
         await sink.close()
         shutil.rmtree(workspace, ignore_errors=True)
 
@@ -205,6 +330,40 @@ def _placeholder_application() -> Application:
     )
 
 
+def _read_and_validate_liftwork_yaml(workspace: Path) -> str | None:
+    """Return the raw text of `<workspace>/liftwork.yaml`, or None if absent."""
+    yaml_path = workspace / "liftwork.yaml"
+    if not yaml_path.is_file():
+        return None
+    text = yaml_path.read_text(encoding="utf-8")
+    parse_liftwork_yaml(text)  # raises LiftworkConfigError on bad input
+    return text
+
+
+async def _capture_build_inputs(
+    state: WorkerState,
+    run_id: UUID,
+    *,
+    workspace: Path,
+    yaml_text: str | None,
+    sink: TeeLogSink,
+) -> None:
+    """Infer language/EXPOSE defaults and persist them + liftwork.yaml on the run."""
+    defaults = infer_deploy_defaults(workspace)
+    await sink.write(
+        f"[build] inferred port={defaults.port} health={defaults.health_check_path}"
+        f" (source={defaults.source})"
+    )
+    async with state.session_factory() as session:
+        runs = BuildRunRepository(session)
+        run = await runs.get_by_id(run_id)
+        if run is None:
+            return
+        await runs.set_deploy_config_yaml(run, yaml_text=yaml_text)
+        await runs.set_inferred_defaults(run, defaults=defaults.to_dict())
+        await session.commit()
+
+
 async def _mark_build(
     state: WorkerState,
     run_id: UUID,
@@ -240,26 +399,45 @@ async def _mark_build(
 
 
 async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
+    with tracer.start_as_current_span("deploy.run") as span:
+        span.set_attribute("liftwork.build_id", build_run_id)
+        return await _run_deploy_impl(ctx, build_run_id, span)
+
+
+async def _run_deploy_impl(  # noqa: PLR0915
+    ctx: dict[str, Any], build_run_id: str, span: trace.Span,
+) -> dict[str, Any]:
     state = get_state(ctx)
     run_id = UUID(build_run_id)
     log.info("deploy.start", build_id=str(run_id))
 
     archive_sink = InMemoryLogSink()
+    metrics_state = _DeployMetricsState()
 
     async with state.session_factory() as session:
         runs = BuildRunRepository(session)
         run = await runs.get_by_id(run_id)
         if run is None or run.image_tag is None or run.image_digest is None:
             log.warning("deploy.skipped_no_image", build_id=str(run_id))
+            metrics_state.outcome = "skipped"
+            metrics_state.flush()
             return {"status": "skipped", "reason": "build incomplete"}
         apps = ApplicationRepository(session)
         application = await apps.get_by_id(run.application_id)
         if application is None:
+            metrics_state.outcome = "skipped"
+            metrics_state.flush()
             return {"status": "skipped", "reason": "application missing"}
         clusters = ClusterRepository(session)
         cluster = await clusters.get_by_id(application.cluster_id)
         if cluster is None:
+            metrics_state.outcome = "skipped"
+            metrics_state.flush()
             return {"status": "skipped", "reason": "cluster missing"}
+        metrics_state.cluster = cluster.name
+        span.set_attribute("liftwork.application_slug", application.slug)
+        span.set_attribute("liftwork.cluster", cluster.name)
+        span.set_attribute("liftwork.namespace", application.namespace)
 
         revision = await _next_revision(session, application_id=application.id)
         deployment = Deployment(
@@ -285,13 +463,19 @@ async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
     sink = TeeLogSink([archive_sink, pubsub_sink])
 
     try:
-        # Build the DeploySpec from the per-app overrides on the
-        # Application row. liftwork.yaml-driven overrides land in v2 by
-        # persisting the parsed config on the BuildRun.
-        deploy_spec = DeploySpec(
-            port=application.app_port,
-            replicas=application.replicas,
-            health_check=HealthCheck(path=application.health_check_path),
+        # File-wins: build the spec from the parsed liftwork.yaml if the
+        # build captured one. Falls back to the inferred defaults stamped
+        # at build time, then to the Application row's columns for
+        # legacy builds that predate the inference pass.
+        inferred = (
+            DeployDefaults.from_dict(run.inferred_defaults_json)
+            if run.inferred_defaults_json
+            else None
+        )
+        deploy_spec = effective_deploy_spec(
+            application=application,
+            inferred_defaults=inferred,
+            liftwork_yaml=run.deploy_config_yaml,
         )
         deploy_request = DeployRequest(
             target=DeployTarget(cluster_name=cluster.name, namespace=application.namespace),
@@ -323,6 +507,9 @@ async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
             outcome=result.outcome,
             error=result.error,
         )
+        metrics_state.outcome = result.outcome.value
+        if result.outcome is not RolloutOutcome.succeeded:
+            metrics.record_error(category="deploy_failed", stage="deploy")
         await sink.write(f"[deploy] outcome={result.outcome.value} revision={revision}")
         return {
             "status": result.outcome.value,
@@ -330,6 +517,7 @@ async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
             "revision": revision,
         }
     finally:
+        metrics_state.flush()
         await sink.close()
 
 

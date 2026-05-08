@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from liftwork_core.build.config import (
     DeploySpec,
+    EnvConfigMapRef,
+    EnvSecretRef,
     HealthCheck,
     IngressSpec,
     ResourceQuantity,
@@ -147,6 +149,36 @@ def test_build_all_manifests_skips_disabled_ingress() -> None:
     manifests = build_all_manifests(_make_request())
     kinds = [m["kind"] for m in manifests]
     assert kinds == ["Deployment", "Service"]
+
+
+def test_env_renders_secret_and_configmap_refs() -> None:
+    req = _make_request(
+        deploy_spec=DeploySpec(
+            port=8080,
+            replicas=1,
+            env={
+                "PLAIN": "hello",
+                "DB_URL": EnvSecretRef(from_secret="my-db", key="url"),
+                "API_KEY": EnvSecretRef(from_secret="api-creds"),  # key defaults to env var name
+                "OTEL": EnvConfigMapRef(from_configmap="telemetry", key="otlp"),
+            },
+        ),
+    )
+    container = build_deployment_manifest(req)["spec"]["template"]["spec"]["containers"][0]
+    by_name = {e["name"]: e for e in container["env"]}
+    assert by_name["PLAIN"] == {"name": "PLAIN", "value": "hello"}
+    assert by_name["DB_URL"] == {
+        "name": "DB_URL",
+        "valueFrom": {"secretKeyRef": {"name": "my-db", "key": "url"}},
+    }
+    assert by_name["API_KEY"] == {
+        "name": "API_KEY",
+        "valueFrom": {"secretKeyRef": {"name": "api-creds", "key": "API_KEY"}},
+    }
+    assert by_name["OTEL"] == {
+        "name": "OTEL",
+        "valueFrom": {"configMapKeyRef": {"name": "telemetry", "key": "otlp"}},
+    }
 
 
 def test_build_all_manifests_includes_enabled_ingress() -> None:

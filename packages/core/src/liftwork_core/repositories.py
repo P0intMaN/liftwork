@@ -187,6 +187,23 @@ class BuildRunRepository:
         await self.session.flush()
         return run
 
+    async def set_deploy_config_yaml(self, run: BuildRun, *, yaml_text: str | None) -> BuildRun:
+        """Persist the raw `liftwork.yaml` we found in the cloned repo (or None)."""
+        run.deploy_config_yaml = yaml_text
+        await self.session.flush()
+        return run
+
+    async def set_inferred_defaults(
+        self,
+        run: BuildRun,
+        *,
+        defaults: dict[str, str | int],
+    ) -> BuildRun:
+        """Persist the language/EXPOSE-derived defaults stamped at build time."""
+        run.inferred_defaults_json = defaults
+        await self.session.flush()
+        return run
+
     async def update_status(
         self,
         run: BuildRun,

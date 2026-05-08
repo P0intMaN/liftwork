@@ -1,0 +1,154 @@
+{
+  "annotations": { "list": [] },
+  "description": "Liftwork — operator-facing view: builds, deploys, queue health, throughput, image footprint.",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "tags": ["liftwork", "operations"],
+  "time": { "from": "now-6h", "to": "now" },
+  "timezone": "browser",
+  "title": "Liftwork — Operations",
+  "uid": "liftwork-ops",
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Active builds",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "id": 1,
+      "targets": [{ "expr": "sum(liftwork_active_builds)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }, { "color": "yellow", "value": 5 }, { "color": "red", "value": 10 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Active deploys",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "id": 2,
+      "targets": [{ "expr": "sum(liftwork_active_deploys)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green" }, { "color": "yellow", "value": 5 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Build success rate (1h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "id": 3,
+      "targets": [{ "expr": "sum(rate(liftwork_builds_finished_total{status=\"succeeded\"}[1h])) / sum(rate(liftwork_builds_finished_total[1h]))", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red" }, { "color": "yellow", "value": 0.8 }, { "color": "green", "value": 0.95 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Deploy success rate (1h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 0, "w": 4, "h": 4 },
+      "id": 4,
+      "targets": [{ "expr": "sum(rate(liftwork_deploys_finished_total{outcome=\"succeeded\"}[1h])) / sum(rate(liftwork_deploys_finished_total[1h]))", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "percentunit", "decimals": 1, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red" }, { "color": "yellow", "value": 0.8 }, { "color": "green", "value": 0.95 }] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Builds / hour",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 16, "y": 0, "w": 4, "h": 4 },
+      "id": 5,
+      "targets": [{ "expr": "sum(rate(liftwork_builds_finished_total[1h])) * 3600", "refId": "A" }],
+      "fieldConfig": { "defaults": { "decimals": 0 } }
+    },
+    {
+      "type": "stat",
+      "title": "Healthy clusters",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 20, "y": 0, "w": 4, "h": 4 },
+      "id": 6,
+      "targets": [{ "expr": "sum(liftwork_cluster_healthy)", "refId": "A" }],
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red" }, { "color": "green", "value": 1 }] } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Build duration (p50 / p95 / p99) by language",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "id": 10,
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (language, le) (rate(liftwork_build_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (language, le) (rate(liftwork_build_duration_seconds_bucket[5m])))", "legendFormat": "p95 {{language}}", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (language, le) (rate(liftwork_build_duration_seconds_bucket[5m])))", "legendFormat": "p99 {{language}}", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Deploy duration (p50 / p95 / p99) by cluster",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+      "id": 11,
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (cluster, le) (rate(liftwork_deploy_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{cluster}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (cluster, le) (rate(liftwork_deploy_duration_seconds_bucket[5m])))", "legendFormat": "p95 {{cluster}}", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum by (cluster, le) (rate(liftwork_deploy_duration_seconds_bucket[5m])))", "legendFormat": "p99 {{cluster}}", "refId": "C" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Build outcomes (per minute, by status)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 12, "w": 12, "h": 7 },
+      "id": 12,
+      "targets": [{ "expr": "sum by (status) (rate(liftwork_builds_finished_total[1m])) * 60", "legendFormat": "{{status}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Deploy outcomes (per minute, by outcome)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 12, "w": 12, "h": 7 },
+      "id": 13,
+      "targets": [{ "expr": "sum by (outcome) (rate(liftwork_deploys_finished_total[1m])) * 60", "legendFormat": "{{outcome}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Image size (p50 / p95) by language",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 19, "w": 12, "h": 7 },
+      "id": 14,
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum by (language, le) (rate(liftwork_build_image_bytes_bucket[1h])))", "legendFormat": "p50 {{language}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum by (language, le) (rate(liftwork_build_image_bytes_bucket[1h])))", "legendFormat": "p95 {{language}}", "refId": "B" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Webhooks received (by event/action)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 19, "w": 12, "h": 7 },
+      "id": 15,
+      "targets": [{ "expr": "sum by (event, action) (rate(liftwork_webhooks_received_total[5m]))", "legendFormat": "{{event}}/{{action}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Top error categories",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 26, "w": 24, "h": 7 },
+      "id": 16,
+      "targets": [{ "expr": "topk(10, sum by (category, stage) (rate(liftwork_errors_total[5m])))", "legendFormat": "{{stage}} → {{category}}", "refId": "A" }],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    }
+  ]
+}

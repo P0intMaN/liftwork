@@ -8,6 +8,7 @@ import redis.asyncio as redis_asyncio
 import structlog
 from arq.connections import RedisSettings
 from arq.cron import cron
+from prometheus_client import start_http_server
 
 from liftwork_api import __version__
 from liftwork_core.build.protocols import BuildExecutor
@@ -15,7 +16,7 @@ from liftwork_core.config import Settings, get_settings
 from liftwork_core.db import make_engine, make_session_factory
 from liftwork_core.deploy.protocols import DeployExecutor
 from liftwork_core.logging import configure_logging
-from liftwork_core.telemetry import configure_telemetry
+from liftwork_core.telemetry import PROMETHEUS_REGISTRY, configure_telemetry
 from liftwork_worker.deploy.k8s_executor import K8sDeployExecutor
 from liftwork_worker.executors.buildkit_pod import K8sBuildKitExecutor
 from liftwork_worker.health import check_clusters_health
@@ -87,7 +88,17 @@ async def on_startup(ctx: dict[str, Any]) -> None:
         build_executor=build_exec,
         deploy_executor=deploy_exec,
     )
-    log.info("worker_started", env=settings.env, executor=settings.worker.executor)
+
+    # Expose Prometheus /metrics on the worker's health_port so the same
+    # scrape config that hits the API can hit the worker pod too. Runs in
+    # a stdlib HTTP server thread — separate event loop, no asyncio fuss.
+    start_http_server(settings.worker.health_port, registry=PROMETHEUS_REGISTRY)
+    log.info(
+        "worker_started",
+        env=settings.env,
+        executor=settings.worker.executor,
+        metrics_port=settings.worker.health_port,
+    )
 
 
 async def on_shutdown(ctx: dict[str, Any]) -> None:
