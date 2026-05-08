@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "liftwork chart values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "namespace": { "type": "string" },
+    "namespaceCreate": { "type": "boolean" },
+
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": { "type": "string" },
+        "imagePullSecrets": { "type": "array" },
+        "labels": { "type": "object" }
+      }
+    },
+
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "jwtSecret": { "type": "string" },
+        "githubWebhookSecret": { "type": "string" },
+        "bootstrapAdminEmail": { "type": "string", "format": "email" },
+        "bootstrapAdminPassword": { "type": "string" }
+      }
+    },
+
+    "api": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "image": { "$ref": "#/definitions/imageSpec" },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": { "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+          }
+        },
+        "autoscaling": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "minReplicas": { "type": "integer", "minimum": 1 },
+            "maxReplicas": { "type": "integer", "minimum": 1 },
+            "targetCPUUtilizationPercentage": { "type": "integer", "minimum": 1, "maximum": 100 }
+          }
+        }
+      }
+    },
+
+    "worker": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 1, "maximum": 1,
+                          "description": "Worker is single-replica only — see values.yaml." },
+        "image": { "$ref": "#/definitions/imageSpec" },
+        "concurrency": { "type": "integer", "minimum": 1 },
+        "executor": { "enum": ["kind", "mock"] }
+      }
+    },
+
+    "dashboard": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "replicaCount": { "type": "integer", "minimum": 1 },
+        "image": { "$ref": "#/definitions/imageSpec" }
+      }
+    },
+
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "username": { "type": "string" },
+            "password": { "type": "string" },
+            "database": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "redis": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      }
+    },
+
+    "externalDatabase": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" }
+      }
+    },
+
+    "externalRedis": {
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" }
+      }
+    },
+
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "host": { "type": "string" },
+        "annotations": { "type": "object" },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "secretName": { "type": "string" }
+          }
+        }
+      }
+    },
+
+    "serviceMonitor": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "interval": { "type": "string" },
+        "scrapeTimeout": { "type": "string" }
+      }
+    },
+
+    "telemetry": {
+      "type": "object",
+      "properties": {
+        "otlp": {
+          "type": "object",
+          "properties": {
+            "endpoint": { "type": "string" }
+          }
+        },
+        "logFormat": { "enum": ["json", "console"] }
+      }
+    },
+
+    "registry": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string" },
+        "insecure": { "type": "boolean" }
+      }
+    },
+
+    "migrate": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "backoffLimit": { "type": "integer", "minimum": 0 }
+      }
+    },
+
+    "rbac": {
+      "type": "object",
+      "properties": {
+        "create": { "type": "boolean" }
+      }
+    },
+
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+
+  "definitions": {
+    "imageSpec": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "pullPolicy": { "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    }
+  }
+}

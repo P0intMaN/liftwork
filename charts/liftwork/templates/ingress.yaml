@@ -1,0 +1,46 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "liftwork.ingress.fullname" . }}
+  namespace: {{ include "liftwork.namespace" . }}
+  labels:
+    {{- include "liftwork.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ required "ingress.tls.secretName is required when ingress.tls.enabled is true" .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          # /api/* → API. ingress controllers strip nothing — the API
+          # mounts at root so we use a rewrite annotation when needed
+          # (nginx-ingress: nginx.ingress.kubernetes.io/rewrite-target: /$2).
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "liftwork.api.fullname" . }}
+                port:
+                  number: {{ .Values.api.service.port }}
+          # /* → Dashboard. SPA fallback handled by the nginx image's
+          # try_files directive.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "liftwork.dashboard.fullname" . }}
+                port:
+                  number: {{ .Values.dashboard.service.port }}
+{{- end }}

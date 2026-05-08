@@ -1,0 +1,13 @@
+{{/*
+Optional namespace creation. Most users will run `helm install -n <ns>
+--create-namespace` and leave both values unset; this template exists
+for the per-tenant case where one chart manages its own namespace.
+*/}}
+{{- if and .Values.namespace .Values.namespaceCreate }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace }}
+  labels:
+    {{- include "liftwork.labels" . | nindent 4 }}
+{{- end }}

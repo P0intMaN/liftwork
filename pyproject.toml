@@ -77,6 +77,7 @@ testpaths = [
     "apps/api/tests",
     "apps/worker/tests",
     "packages/core/tests",
+    "charts/liftwork/tests",
 ]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib"

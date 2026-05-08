@@ -1,34 +1,99 @@
-# --- Liftwork Helm values (skeleton) ---
-# Full templates land in Phase 6.
+# --- Liftwork Helm values ---
+# Defaults aim to be safe and correct for a single-tenant install.
+# Required-secret block (jwt.secret, database.url, github.webhookSecret)
+# has no defaults — install fails with a clear NOTES.txt error if missing.
+
+# `namespace` lets a single chart install isolate a tenant. When unset,
+# resources land in the release namespace (`helm install ... -n <ns>`).
+# Set explicitly when running `helm install` against a cluster-wide
+# release name and you want the chart to manage its own namespace.
+namespace: ""
+namespaceCreate: false
 
 global:
   imageRegistry: ghcr.io
   imagePullSecrets: []
+  # Common labels applied to all resources.
+  labels: {}
+  # Required by the bitnami/postgresql + bitnami/redis subcharts (they
+  # ship a content-trust gate that fires on the GHCR-mirrored tags they
+  # now publish by default). No effect when the subcharts are disabled.
+  security:
+    allowInsecureImages: true
 
+# ---------------------------------------------------------------------------
+# Application secrets — REQUIRED.
+# Either provide values inline (via --set or a values file) or point at an
+# externally-managed Secret via `existingSecret`.
+# ---------------------------------------------------------------------------
+secrets:
+  # If set, the chart skips creating its own Secret and references this one.
+  # Must contain keys: LIFTWORK_JWT__SECRET, LIFTWORK_DATABASE__URL,
+  # LIFTWORK_REDIS__URL, LIFTWORK_GITHUB__WEBHOOK_SECRET.
+  existingSecret: ""
+
+  # Inline values (used only when existingSecret is empty).
+  jwtSecret: ""           # >= 32 bytes; required
+  githubWebhookSecret: "" # required for GitHub webhook delivery
+  bootstrapAdminEmail: admin@example.com
+  bootstrapAdminPassword: ""  # required for first login; rotate after
+
+# ---------------------------------------------------------------------------
+# API
+# ---------------------------------------------------------------------------
 api:
   enabled: true
   replicaCount: 2
   image:
     repository: p0intman/liftwork-api
-    tag: ""        # defaults to .Chart.AppVersion
+    tag: ""              # defaults to .Chart.AppVersion
     pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 7878
   resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: 1000m
-      memory: 1Gi
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 1,    memory: 1Gi }
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 75
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
+# ---------------------------------------------------------------------------
+# Worker — single replica only. arq isn't horizontally safe yet; in-flight
+# jobs aren't resumable across worker pods. Scale by raising `concurrency`
+# instead of replicaCount until Phase 7 lands resumable execution.
+# ---------------------------------------------------------------------------
 worker:
   enabled: true
-  replicaCount: 2
+  replicaCount: 1
   image:
     repository: p0intman/liftwork-worker
     tag: ""
     pullPolicy: IfNotPresent
+  service:
+    # Worker exposes /metrics for Prometheus scrape only.
+    metricsPort: 7879
   concurrency: 4
+  executor: kind        # kind | mock
+  builderNamespace: ""  # default: same as chart namespace
+  builderServiceAccount: liftwork-builder
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: 2,    memory: 4Gi }
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
+# ---------------------------------------------------------------------------
+# Dashboard (Vite SPA served by nginx)
+# ---------------------------------------------------------------------------
 dashboard:
   enabled: true
   replicaCount: 2
@@ -36,41 +101,109 @@ dashboard:
     repository: p0intman/liftwork-dashboard
     tag: ""
     pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests: { cpu: 50m,  memory: 64Mi }
+    limits:   { cpu: 200m, memory: 128Mi }
 
+# ---------------------------------------------------------------------------
+# Database — bundled or external
+# ---------------------------------------------------------------------------
 postgresql:
-  enabled: true     # set false to use externalDatabase
+  enabled: false        # default: bring your own
+  # When true, the bitnami/postgresql subchart is installed.
   auth:
     username: liftwork
-    password: ""    # required if enabled and no existingSecret
+    password: ""        # required when enabled
     database: liftwork
-
-redis:
-  enabled: true
-  auth:
-    enabled: false
+  primary:
+    persistence:
+      size: 10Gi
 
 externalDatabase:
-  url: ""           # postgresql+asyncpg://...
+  # Used when postgresql.enabled = false.
+  # Form: postgresql+asyncpg://USER:PASS@HOST:PORT/DB
+  url: ""
+
+# ---------------------------------------------------------------------------
+# Redis — bundled or external
+# ---------------------------------------------------------------------------
+redis:
+  enabled: false
+  auth:
+    enabled: false
+  master:
+    persistence:
+      size: 2Gi
 
 externalRedis:
-  url: ""           # redis://...
+  # Used when redis.enabled = false.
+  url: ""
 
+# ---------------------------------------------------------------------------
+# Ingress — single ingress fronting both /api/* and /*
+# ---------------------------------------------------------------------------
 ingress:
   enabled: false
   className: ""
   host: liftwork.example.com
-  tls: false
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: ""
 
+# ---------------------------------------------------------------------------
+# Observability
+# ---------------------------------------------------------------------------
 serviceMonitor:
+  # Set true if you have kube-prometheus-stack installed and want it to
+  # scrape /metrics on api + worker.
   enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
 
+telemetry:
+  otlp:
+    endpoint: ""        # e.g. http://otel-collector:4317
+  logFormat: json       # json | console
+
+# ---------------------------------------------------------------------------
+# Image registry that liftwork pushes built images to
+# ---------------------------------------------------------------------------
+registry:
+  host: ""              # required at runtime, e.g. registry.liftwork.svc:5000
+  insecure: false
+
+# ---------------------------------------------------------------------------
+# Migrations — pre-install/upgrade Helm hook Job runs `alembic upgrade head`
+# before any Pod sees a new schema.
+# ---------------------------------------------------------------------------
+migrate:
+  enabled: true
+  backoffLimit: 3
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+# ---------------------------------------------------------------------------
+# RBAC
+# ---------------------------------------------------------------------------
 rbac:
   create: true
 
 serviceAccount:
-  create: true
-  name: ""
-
-telemetry:
-  otlp:
-    endpoint: ""    # e.g. http://otel-collector:4317
+  api:
+    create: true
+    name: ""
+    annotations: {}
+  worker:
+    create: true
+    name: ""
+    annotations: {}
+  dashboard:
+    create: true
+    name: ""
+    annotations: {}

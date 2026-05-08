@@ -1,0 +1,49 @@
+{{- if .Values.rbac.create }}
+{{/*
+Worker RBAC: the worker creates BuildKit Jobs, ConfigMaps, and reads
+Pod logs in the chart namespace, plus applies Deployments/Services/
+Ingresses in target namespaces (those are bound separately by the
+operator — see `make kind-prereqs` for the kind-cluster equivalent).
+
+The chart only binds the same-namespace RBAC needed for the worker
+to drive BuildKit pods + log streaming. Cross-namespace deploy RBAC
+is intentionally NOT created here — that's a per-target decision
+the operator makes outside the chart.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "liftwork.worker.fullname" . }}
+  namespace: {{ include "liftwork.namespace" . }}
+  labels:
+    {{- include "liftwork.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "liftwork.worker.fullname" . }}
+  namespace: {{ include "liftwork.namespace" . }}
+  labels:
+    {{- include "liftwork.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "liftwork.worker.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "liftwork.worker.serviceAccountName" . }}
+    namespace: {{ include "liftwork.namespace" . }}
+{{- end }}

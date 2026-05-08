@@ -1,0 +1,46 @@
+# Dev/example values — `helm install lw ./charts/liftwork -f values.dev.yaml`.
+# Bundles Postgres + Redis subcharts and skips ingress for `port-forward` use.
+
+namespace: ""           # take from `-n <ns>`
+namespaceCreate: false
+
+secrets:
+  jwtSecret: dev-secret-please-replace-and-rotate-in-prod
+  bootstrapAdminPassword: change-me-now
+  githubWebhookSecret: dev-webhook-secret
+
+api:
+  replicaCount: 1
+  autoscaling:
+    enabled: false
+
+worker:
+  replicaCount: 1
+  executor: kind
+  concurrency: 4
+
+dashboard:
+  replicaCount: 1
+
+postgresql:
+  enabled: true
+  auth:
+    password: liftwork
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+
+ingress:
+  enabled: false
+
+serviceMonitor:
+  enabled: false
+
+registry:
+  host: registry.liftwork.svc.cluster.local:5000
+  insecure: true
+
+telemetry:
+  logFormat: json

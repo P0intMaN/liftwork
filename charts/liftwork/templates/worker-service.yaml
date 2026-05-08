@@ -1,0 +1,22 @@
+{{- if .Values.worker.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "liftwork.worker.fullname" . }}
+  namespace: {{ include "liftwork.namespace" . }}
+  labels:
+    {{- include "liftwork.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  # Headless: this Service exists only so ServiceMonitor / kube-prometheus
+  # can scrape /metrics. Worker traffic is via Redis, not HTTP.
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    {{- include "liftwork.worker.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: metrics
+      port: {{ .Values.worker.service.metricsPort }}
+      targetPort: metrics
+      protocol: TCP
+{{- end }}

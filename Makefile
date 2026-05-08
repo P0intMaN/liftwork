@@ -1,4 +1,4 @@
-.PHONY: help bootstrap install lint format typecheck test dev-api dev-worker dev-dashboard dashboard-build dev-up dev-down migrate migrate-rev migrate-down kind-prereqs kind-down clean
+.PHONY: help bootstrap install lint format typecheck test dev-api dev-worker dev-dashboard dashboard-build dev-up dev-down migrate migrate-rev migrate-down kind-prereqs kind-down clean image-api image-worker image-dashboard images helm-lint helm-template helm-install helm-uninstall
 
 PNPM         ?= pnpm
 UV           ?= uv
@@ -78,6 +78,33 @@ kind-prereqs:
 
 kind-down:
 	kubectl --context kind-kubedeploy-dev delete ns liftwork --ignore-not-found
+
+IMAGE_REGISTRY ?= ghcr.io/p0intman
+IMAGE_TAG      ?= 0.1.0
+
+image-api:
+	docker build --pull -t $(IMAGE_REGISTRY)/liftwork-api:$(IMAGE_TAG) -f apps/api/Dockerfile .
+
+image-worker:
+	docker build --pull -t $(IMAGE_REGISTRY)/liftwork-worker:$(IMAGE_TAG) -f apps/worker/Dockerfile .
+
+image-dashboard:
+	docker build --pull -t $(IMAGE_REGISTRY)/liftwork-dashboard:$(IMAGE_TAG) apps/dashboard
+
+images: image-api image-worker image-dashboard
+
+helm-lint:
+	helm lint charts/liftwork --set secrets.jwtSecret=test-secret-32-bytes-or-more-please-please-please --set externalDatabase.url=postgresql+asyncpg://x --set externalRedis.url=redis://x --set registry.host=registry.local
+
+helm-template:
+	helm template lw charts/liftwork --namespace lw --set secrets.jwtSecret=test-secret-32-bytes-or-more-please-please-please --set postgresql.enabled=true --set postgresql.auth.password=devpw --set redis.enabled=true --set registry.host=registry.local --set ingress.enabled=true
+
+helm-install:
+	helm dep update charts/liftwork
+	helm upgrade --install lw charts/liftwork --namespace lw --create-namespace -f $${VALUES:-values.dev.yaml}
+
+helm-uninstall:
+	helm uninstall lw --namespace lw
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

@@ -1,0 +1,52 @@
+Liftwork {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}" in namespace "{{ include "liftwork.namespace" . }}".
+
+{{- if and (not .Values.secrets.existingSecret) (not .Values.secrets.jwtSecret) }}
+
+⚠️  WARNING — secrets.jwtSecret is unset. Liftwork will not start.
+   Either set secrets.jwtSecret (>= 32 bytes) or point at an existing
+   Secret via secrets.existingSecret.
+{{- end }}
+
+{{- if and (not .Values.postgresql.enabled) (not .Values.externalDatabase.url) }}
+
+⚠️  WARNING — no database configured. Set postgresql.enabled=true (bundled)
+   or externalDatabase.url=postgresql+asyncpg://...
+{{- end }}
+
+{{- if and (not .Values.redis.enabled) (not .Values.externalRedis.url) }}
+
+⚠️  WARNING — no redis configured. Set redis.enabled=true (bundled) or
+   externalRedis.url=redis://...
+{{- end }}
+
+Useful commands:
+
+  # Watch the install settle
+  kubectl --namespace {{ include "liftwork.namespace" . }} get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+
+  # Tail the API logs
+  kubectl --namespace {{ include "liftwork.namespace" . }} logs deploy/{{ include "liftwork.api.fullname" . }} -f
+
+  # Tail the worker logs
+  kubectl --namespace {{ include "liftwork.namespace" . }} logs deploy/{{ include "liftwork.worker.fullname" . }} -f
+
+{{- if .Values.ingress.enabled }}
+
+Dashboard:  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/
+API:        http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}/api/healthz
+{{- else }}
+
+No Ingress configured — port-forward to reach the dashboard:
+
+  kubectl --namespace {{ include "liftwork.namespace" . }} port-forward svc/{{ include "liftwork.dashboard.fullname" . }} 8080:{{ .Values.dashboard.service.port }}
+  open http://localhost:8080
+{{- end }}
+
+{{- if .Values.serviceMonitor.enabled }}
+
+A ServiceMonitor was created — kube-prometheus-stack should start
+scraping /metrics on api and worker within ~30s.
+{{- end }}
+
+Docs:    https://github.com/P0intMaN/liftwork/tree/main/docs
+Issues:  https://github.com/P0intMaN/liftwork/issues
