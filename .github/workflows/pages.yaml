@@ -30,7 +30,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `enablement: true` flips the repo's Pages source to GitHub Actions
+      # on the first run (uses our `pages: write` permission), so a clone
+      # of this repo doesn't need a manual Settings → Pages toggle.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload site/ as Pages artifact
         uses: actions/upload-pages-artifact@v3
