@@ -73,7 +73,11 @@ jobs:
         run: uv run alembic upgrade head
 
       - name: pytest
-        run: uv run pytest -q --maxfail=1
+        # Chart-render tests need `helm dep update` first; the dedicated
+        # `helm` job runs them. We pass explicit paths here (overriding
+        # pyproject.toml's testpaths) to keep this job's surface focused
+        # on Python and avoid duplicating helm setup.
+        run: uv run pytest -q --maxfail=1 apps/api/tests apps/worker/tests packages/core/tests
 
   dashboard:
     name: dashboard (typecheck · build)

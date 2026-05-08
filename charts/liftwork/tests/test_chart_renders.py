@@ -34,6 +34,14 @@ def _have_helm() -> bool:
     return shutil.which("helm") is not None
 
 
+def _have_chart_deps() -> bool:
+    """Subcharts (postgresql, redis) must be downloaded for `helm template`
+    to succeed. CI's helm job runs `helm dep update` first; the python
+    job (which also discovers these tests via pyproject.toml testpaths)
+    doesn't, so without this guard the tests would fail there."""
+    return (CHART_DIR / "Chart.lock").is_file() and any((CHART_DIR / "charts").glob("*.tgz"))
+
+
 def _render(*extra_values: str, namespace: str = "lw") -> list[dict]:
     args = [
         "helm",
@@ -49,7 +57,10 @@ def _render(*extra_values: str, namespace: str = "lw") -> list[dict]:
     return [d for d in yaml.safe_load_all(out.stdout) if d]
 
 
-pytestmark = pytest.mark.skipif(not _have_helm(), reason="helm CLI not available")
+pytestmark = pytest.mark.skipif(
+    not (_have_helm() and _have_chart_deps()),
+    reason="helm CLI or chart deps missing (run `helm dep update charts/liftwork`)",
+)
 
 
 def test_minimal_install_renders_all_three_workloads() -> None:
