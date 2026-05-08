@@ -79,9 +79,7 @@ def infer_deploy_defaults(workspace: Path) -> DeployDefaults:
 
 
 def _infer_port(workspace: Path, detection: DetectionResult) -> tuple[int, str]:
-    expose = _read_expose(workspace / "Dockerfile") or _read_expose(
-        workspace / "Containerfile"
-    )
+    expose = _read_expose(workspace / "Dockerfile") or _read_expose(workspace / "Containerfile")
     if expose is not None:
         return expose, "Dockerfile EXPOSE"
     by_lang = _PORT_BY_LANGUAGE.get(detection.language, _DEFAULT_PORT)

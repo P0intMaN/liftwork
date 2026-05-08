@@ -99,9 +99,7 @@ def _diagnose_pods(pods: list[Any]) -> RolloutDiagnostic | None:
                     is_terminal=True,
                 )
             if reason == "CrashLoopBackOff":
-                last_terminated = getattr(
-                    getattr(cs, "last_state", None), "terminated", None
-                )
+                last_terminated = getattr(getattr(cs, "last_state", None), "terminated", None)
                 exit_code = getattr(last_terminated, "exit_code", None)
                 exit_reason = getattr(last_terminated, "reason", None)
                 detail = (
@@ -169,10 +167,7 @@ def _diagnose_events(
         if getattr(event, "reason", "") == "FailedScheduling":
             return RolloutDiagnostic(
                 DiagnosisCategory.not_scheduled,
-                (
-                    f"pod could not be scheduled: "
-                    f"{getattr(event, 'message', '') or 'no detail'}"
-                ),
+                (f"pod could not be scheduled: {getattr(event, 'message', '') or 'no detail'}"),
                 is_terminal=False,
             )
     return None

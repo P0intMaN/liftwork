@@ -14,11 +14,11 @@ def test_extract_manifest_digest_picks_containerimage_digest() -> None:
     a = "a" * 64
     c = "c" * 64
     meta = (
-        '{\n'
+        "{\n"
         f'  "containerimage.config.digest": "sha256:{c}",\n'
         f'  "containerimage.digest": "sha256:{a}",\n'
         f'  "containerimage.descriptor": {{"digest": "sha256:{a}"}}\n'
-        '}\n'
+        "}\n"
     )
     assert extract_manifest_digest(meta) == f"sha256:{a}"
 

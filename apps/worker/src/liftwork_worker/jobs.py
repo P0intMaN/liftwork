@@ -89,7 +89,8 @@ class _BuildMetricsState:
         metrics.BUILDS_STARTED.labels(language=self.language, source=self.source).inc()
         metrics.BUILDS_FINISHED.labels(language=self.language, status=self.status).inc()
         metrics.BUILD_DURATION.labels(
-            language=self.language, status=self.status,
+            language=self.language,
+            status=self.status,
         ).observe(elapsed)
         if self.image_bytes is not None and self.image_bytes > 0:
             metrics.BUILD_IMAGE_BYTES.labels(language=self.language).observe(self.image_bytes)
@@ -115,7 +116,8 @@ class _DeployMetricsState:
         metrics.DEPLOYS_STARTED.labels(cluster=self.cluster).inc()
         metrics.DEPLOYS_FINISHED.labels(cluster=self.cluster, outcome=self.outcome).inc()
         metrics.DEPLOY_DURATION.labels(
-            cluster=self.cluster, outcome=self.outcome,
+            cluster=self.cluster,
+            outcome=self.outcome,
         ).observe(elapsed)
         metrics.ACTIVE_DEPLOYS.dec()
         self._started = False
@@ -129,7 +131,9 @@ async def run_build(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:  
 
 
 async def _run_build_impl(  # noqa: PLR0915
-    ctx: dict[str, Any], build_run_id: str, span: trace.Span,
+    ctx: dict[str, Any],
+    build_run_id: str,
+    span: trace.Span,
 ) -> dict[str, Any]:
     state = get_state(ctx)
     run_id = UUID(build_run_id)
@@ -405,7 +409,9 @@ async def run_deploy(ctx: dict[str, Any], build_run_id: str) -> dict[str, Any]:
 
 
 async def _run_deploy_impl(  # noqa: PLR0915
-    ctx: dict[str, Any], build_run_id: str, span: trace.Span,
+    ctx: dict[str, Any],
+    build_run_id: str,
+    span: trace.Span,
 ) -> dict[str, Any]:
     state = get_state(ctx)
     run_id = UUID(build_run_id)
@@ -485,8 +491,7 @@ async def _run_deploy_impl(  # noqa: PLR0915
             # this build produced (mutable tags + IfNotPresent caching can
             # otherwise serve a stale layer).
             image_ref=(
-                f"{state.settings.registry.host}/"
-                f"{application.image_repository}@{run.image_digest}"
+                f"{state.settings.registry.host}/{application.image_repository}@{run.image_digest}"
             ),
             image_digest=run.image_digest,
             image_tag=run.image_tag,

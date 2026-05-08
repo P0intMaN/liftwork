@@ -36,8 +36,12 @@ def _have_helm() -> bool:
 
 def _render(*extra_values: str, namespace: str = "lw") -> list[dict]:
     args = [
-        "helm", "template", "lw", str(CHART_DIR),
-        "--namespace", namespace,
+        "helm",
+        "template",
+        "lw",
+        str(CHART_DIR),
+        "--namespace",
+        namespace,
         *_REQUIRED_BASE_VALUES,
         *extra_values,
     ]
@@ -70,8 +74,10 @@ def test_namespace_value_overrides_release_namespace() -> None:
 
 def test_namespace_resource_emitted_when_namespaceCreate() -> None:
     docs = _render(
-        "--set", "namespace=t1",
-        "--set", "namespaceCreate=true",
+        "--set",
+        "namespace=t1",
+        "--set",
+        "namespaceCreate=true",
     )
     kinds = [d["kind"] for d in docs]
     assert "Namespace" in kinds
@@ -110,10 +116,16 @@ def test_ingress_only_when_enabled() -> None:
 def test_secret_required_unless_existingSecret() -> None:
     """Install fails fast when neither secrets.jwtSecret nor existingSecret is set."""
     args = [
-        "helm", "template", "lw", str(CHART_DIR),
-        "--set", "externalDatabase.url=postgresql+asyncpg://x",
-        "--set", "externalRedis.url=redis://x",
-        "--set", "registry.host=registry.local",
+        "helm",
+        "template",
+        "lw",
+        str(CHART_DIR),
+        "--set",
+        "externalDatabase.url=postgresql+asyncpg://x",
+        "--set",
+        "externalRedis.url=redis://x",
+        "--set",
+        "registry.host=registry.local",
     ]
     result = subprocess.run(args, check=False, capture_output=True, text=True)  # noqa: S603
     assert result.returncode != 0
@@ -126,8 +138,7 @@ def test_existingSecret_skips_chart_managed_secret() -> None:
     assert "lw-secrets" not in secret_names
     # Confirm the Deployments reference the external one.
     api_deploy = next(
-        d for d in docs
-        if d.get("kind") == "Deployment" and d["metadata"]["name"] == "lw-api"
+        d for d in docs if d.get("kind") == "Deployment" and d["metadata"]["name"] == "lw-api"
     )
     env_from = api_deploy["spec"]["template"]["spec"]["containers"][0]["envFrom"]
     secret_refs = [e["secretRef"]["name"] for e in env_from if "secretRef" in e]
@@ -137,8 +148,7 @@ def test_existingSecret_skips_chart_managed_secret() -> None:
 def test_worker_uses_recreate_strategy() -> None:
     docs = _render()
     worker = next(
-        d for d in docs
-        if d.get("kind") == "Deployment" and d["metadata"]["name"] == "lw-worker"
+        d for d in docs if d.get("kind") == "Deployment" and d["metadata"]["name"] == "lw-worker"
     )
     assert worker["spec"]["strategy"]["type"] == "Recreate"
 

@@ -346,14 +346,10 @@ class K8sBuildKitExecutor:
             # Init container does git clone first; the buildkit container
             # only enters Running once that succeeds. Until then,
             # read_namespaced_pod_log returns 400.
-            await self._wait_for_container_started(
-                pod_name=pod_name, container="buildkit"
-            )
+            await self._wait_for_container_started(pod_name=pod_name, container="buildkit")
             await log_sink.write(f"[buildkit] streaming pod={pod_name}")
 
-            digest = await self._stream_pod_logs(
-                pod_name=pod_name, log_sink=log_sink
-            )
+            digest = await self._stream_pod_logs(pod_name=pod_name, log_sink=log_sink)
             success = await self._wait_for_completion(job_name=job_name)
             duration = time.perf_counter() - start
 
@@ -509,9 +505,7 @@ class K8sBuildKitExecutor:
         msg = f"container {container} in pod {pod_name} never started"
         raise BuildKitExecutorError(msg)
 
-    async def _wait_for_job_terminal(
-        self, *, job_name: str, timeout_seconds: int = 30
-    ) -> None:
+    async def _wait_for_job_terminal(self, *, job_name: str, timeout_seconds: int = 30) -> None:
         """Wait until the Job has at least one succeeded or failed pod.
 
         Soft cap: if the Job is still in flight after `timeout_seconds`,

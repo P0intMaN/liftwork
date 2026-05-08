@@ -41,17 +41,23 @@ def test_record_helpers_exercise_labels_without_explosion() -> None:
     # registry can render them without raising.
     metrics.record_build_started(language="python", source="webhook")
     metrics.record_build_finished(
-        language="python", status="succeeded", duration_seconds=12.3, image_bytes=42_000_000,
+        language="python",
+        status="succeeded",
+        duration_seconds=12.3,
+        image_bytes=42_000_000,
     )
     metrics.record_deploy_started(cluster="kind-dev")
     metrics.record_deploy_finished(cluster="kind-dev", outcome="succeeded", duration_seconds=4.5)
     metrics.record_error(category="git_clone", stage="build")
     metrics.record_k8s_call(verb="patch", resource="deployments", duration_seconds=0.08)
     metrics.record_k8s_call(
-        verb="get", resource="pods", duration_seconds=0.5, error_status="5xx",
+        verb="get",
+        resource="pods",
+        duration_seconds=0.5,
+        error_status="5xx",
     )
     text = generate_latest(PROMETHEUS_REGISTRY).decode("utf-8")
-    assert "language=\"python\"" in text
-    assert "cluster=\"kind-dev\"" in text
-    assert "category=\"git_clone\"" in text
-    assert "verb=\"patch\"" in text
+    assert 'language="python"' in text
+    assert 'cluster="kind-dev"' in text
+    assert 'category="git_clone"' in text
+    assert 'verb="patch"' in text

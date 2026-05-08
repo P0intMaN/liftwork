@@ -1,0 +1,114 @@
+name: e2e
+
+on:
+  schedule:
+    # Daily at 03:00 UTC — after most working hours, before EU starts.
+    - cron: "0 3 * * *"
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  e2e:
+    name: kind · install · build · deploy
+    # Skip on PRs unless the `e2e` label is present (saves CI minutes on
+    # docs / refactor PRs that don't touch behaviour).
+    if: >-
+      github.event_name != 'pull_request'
+      || contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: liftwork-e2e
+          wait: 300s
+
+      - name: Build images locally + load into kind
+        run: |
+          # Build with `kind` tag so the chart can pull from the local daemon
+          # without going through a registry.
+          docker build --pull -t liftwork/api:e2e       -f apps/api/Dockerfile .
+          docker build --pull -t liftwork/worker:e2e    -f apps/worker/Dockerfile .
+          docker build --pull -t liftwork/dashboard:e2e apps/dashboard
+          kind load docker-image liftwork/api:e2e       --name liftwork-e2e
+          kind load docker-image liftwork/worker:e2e    --name liftwork-e2e
+          kind load docker-image liftwork/dashboard:e2e --name liftwork-e2e
+
+      - name: Apply kind prerequisites (registry + RBAC + containerd patch)
+        env:
+          LIFTWORK_KIND_CLUSTER: liftwork-e2e
+        run: bash scripts/setup-kind-registry.sh
+
+      - name: Install liftwork
+        run: |
+          helm dep update charts/liftwork
+          helm install lw charts/liftwork \
+            --namespace liftwork --create-namespace \
+            --set api.image.repository=liftwork/api --set api.image.tag=e2e \
+            --set api.image.pullPolicy=IfNotPresent \
+            --set worker.image.repository=liftwork/worker --set worker.image.tag=e2e \
+            --set worker.image.pullPolicy=IfNotPresent \
+            --set dashboard.image.repository=liftwork/dashboard --set dashboard.image.tag=e2e \
+            --set dashboard.image.pullPolicy=IfNotPresent \
+            --set "global.imageRegistry=" \
+            --set secrets.jwtSecret=e2e-test-secret-32-bytes-or-more-please-please-please \
+            --set secrets.bootstrapAdminPassword=change-me-now \
+            --set postgresql.enabled=true --set postgresql.auth.password=e2e \
+            --set redis.enabled=true \
+            --set registry.host=registry.liftwork.svc.cluster.local:5000 \
+            --set registry.insecure=true \
+            --set worker.executor=kind \
+            --wait --timeout=10m
+
+      - name: Wait for all workloads Ready
+        run: |
+          kubectl --namespace liftwork wait --for=condition=Available \
+            deploy/lw-api deploy/lw-dashboard --timeout=300s
+          kubectl --namespace liftwork rollout status deploy/lw-worker --timeout=300s
+
+      - name: Drive the build → deploy flow against a fixture
+        env:
+          ADMIN_EMAIL: admin@example.com
+          ADMIN_PASSWORD: change-me-now
+        run: |
+          kubectl --namespace liftwork port-forward svc/lw-api 7878:7878 &
+          echo $! > /tmp/pf.pid
+          sleep 5
+          uv run python scripts/e2e_smoke.py
+          kill "$(cat /tmp/pf.pid)" || true
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          echo "=== pods ==="
+          kubectl --all-namespaces get pods,svc,jobs -o wide
+          echo "=== api logs ==="
+          kubectl --namespace liftwork logs deploy/lw-api --tail=200 --prefix=true || true
+          echo "=== worker logs ==="
+          kubectl --namespace liftwork logs deploy/lw-worker --tail=300 --prefix=true || true
+          echo "=== events ==="
+          kubectl --all-namespaces get events --sort-by=.lastTimestamp | tail -100

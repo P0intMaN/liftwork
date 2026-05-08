@@ -72,16 +72,12 @@ class K8sDeployExecutor:
         for manifest in manifests:
             kind = manifest["kind"]
             name = manifest["metadata"]["name"]
-            await log_sink.write(
-                f"applying {kind}/{name} (fieldManager={self._field_manager})"
-            )
+            await log_sink.write(f"applying {kind}/{name} (fieldManager={self._field_manager})")
             try:
                 await anyio.to_thread.run_sync(partial(self._apply_one, manifest, namespace))
             except ApiException as exc:
                 body = (exc.body or "")[:500] if isinstance(exc.body, str) else ""
-                msg = (
-                    f"apply failed for {kind}/{name}: {exc.reason} ({exc.status}) — {body}"
-                )
+                msg = f"apply failed for {kind}/{name}: {exc.reason} ({exc.status}) — {body}"
                 raise DeployExecutorError(msg) from exc
 
     def _apply_one(self, manifest: dict[str, Any], namespace: str) -> None:
@@ -122,21 +118,15 @@ class K8sDeployExecutor:
 
     def _read_existing(self, *, kind: str, name: str, namespace: str) -> Any:
         if kind == "Deployment":
-            return self._clients.apps_v1.read_namespaced_deployment(
-                name=name, namespace=namespace
-            )
+            return self._clients.apps_v1.read_namespaced_deployment(name=name, namespace=namespace)
         if kind == "Service":
-            return self._clients.core_v1.read_namespaced_service(
-                name=name, namespace=namespace
-            )
+            return self._clients.core_v1.read_namespaced_service(name=name, namespace=namespace)
         if kind == "Ingress":
             return self._clients.networking_v1.read_namespaced_ingress(
                 name=name, namespace=namespace
             )
         if kind == "ConfigMap":
-            return self._clients.core_v1.read_namespaced_config_map(
-                name=name, namespace=namespace
-            )
+            return self._clients.core_v1.read_namespaced_config_map(name=name, namespace=namespace)
         return None
 
     async def wait_for_rollout(  # noqa: PLR0912, PLR0915
@@ -166,9 +156,7 @@ class K8sDeployExecutor:
             elapsed = time.monotonic() - start
             if elapsed > timeout_seconds:
                 metrics.record_error(category="rollout_timeout", stage="rollout")
-                await log_sink.write(
-                    f"rollout: no signal after {int(elapsed)}s — giving up"
-                )
+                await log_sink.write(f"rollout: no signal after {int(elapsed)}s — giving up")
                 return RolloutOutcome.timed_out
 
             try:
@@ -211,7 +199,8 @@ class K8sDeployExecutor:
             if diagnostic is not None:
                 if diagnostic.is_terminal:
                     metrics.record_error(
-                        category=diagnostic.category.value, stage="rollout",
+                        category=diagnostic.category.value,
+                        stage="rollout",
                     )
                     await log_sink.write(f"rollout: {diagnostic.message}")
                     raise RolloutFailedError(diagnostic.message)
@@ -224,7 +213,8 @@ class K8sDeployExecutor:
                     last_soft_category = diagnostic.category.value
                 if soft_streak >= _SOFT_DIAGNOSIS_THRESHOLD:
                     metrics.record_error(
-                        category=diagnostic.category.value, stage="rollout",
+                        category=diagnostic.category.value,
+                        stage="rollout",
                     )
                     await log_sink.write(f"rollout: {diagnostic.message}")
                     raise RolloutFailedError(diagnostic.message)
@@ -254,9 +244,7 @@ class K8sDeployExecutor:
         app_slug = (deployment.metadata.labels or {}).get("app.kubernetes.io/name")
         if app_slug is None:
             return None
-        selector = ",".join(
-            f"{k}={v}" for k, v in selector_labels(app_slug).items()
-        )
+        selector = ",".join(f"{k}={v}" for k, v in selector_labels(app_slug).items())
 
         try:
             pods_resp, events_resp = await asyncio.gather(

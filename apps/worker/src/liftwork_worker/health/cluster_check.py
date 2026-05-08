@@ -63,9 +63,7 @@ async def _probe(cluster: Cluster) -> bool:
                 K8sSettings(kube_context=cluster.name, in_cluster=cluster.in_cluster),
             )
         )
-        await anyio.to_thread.run_sync(
-            partial(clients.core_v1.list_namespace, _request_timeout=5)
-        )
+        await anyio.to_thread.run_sync(partial(clients.core_v1.list_namespace, _request_timeout=5))
     except (K8sClientError, Exception):  # noqa: BLE001 — any failure ⇒ unreachable
         return False
     return True

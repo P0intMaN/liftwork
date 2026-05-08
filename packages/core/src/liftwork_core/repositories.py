@@ -273,9 +273,7 @@ class AnalyticsRepository:
                 func.sum(case((BuildRun.status == BuildStatus.succeeded, 1), else_=0)).label(
                     "succeeded"
                 ),
-                func.sum(case((BuildRun.status == BuildStatus.failed, 1), else_=0)).label(
-                    "failed"
-                ),
+                func.sum(case((BuildRun.status == BuildStatus.failed, 1), else_=0)).label("failed"),
                 func.sum(
                     case(
                         (
@@ -342,9 +340,7 @@ class AnalyticsRepository:
                 func.sum(case((BuildRun.status == BuildStatus.succeeded, 1), else_=0)).label(
                     "succeeded"
                 ),
-                func.sum(case((BuildRun.status == BuildStatus.failed, 1), else_=0)).label(
-                    "failed"
-                ),
+                func.sum(case((BuildRun.status == BuildStatus.failed, 1), else_=0)).label("failed"),
             )
             .where(BuildRun.created_at >= threshold)
             .group_by(day)

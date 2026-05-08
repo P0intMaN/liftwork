@@ -131,9 +131,7 @@ def test_crashloop_is_terminal_with_exit_code() -> None:
 
 
 def test_create_container_config_error_is_terminal() -> None:
-    diag = _diagnose(
-        [_waiting_pod("CreateContainerConfigError", message="secret not found")]
-    )
+    diag = _diagnose([_waiting_pod("CreateContainerConfigError", message="secret not found")])
     assert diag is not None
     assert diag.category is DiagnosisCategory.config_error
     assert diag.is_terminal

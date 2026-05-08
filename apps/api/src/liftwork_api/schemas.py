@@ -184,12 +184,12 @@ class MetricsSummary(BaseModel):
 class ActivityItem(BaseModel):
     """Unified row across BuildRun + Deployment for a single timeline."""
 
-    kind: str               # "build" | "deploy"
+    kind: str  # "build" | "deploy"
     id: UUID
     application_id: UUID
     application_slug: str | None
     status: str
-    detail: str | None      # commit message / image tag / etc.
+    detail: str | None  # commit message / image tag / etc.
     created_at: datetime
 
 

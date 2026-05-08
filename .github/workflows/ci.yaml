@@ -10,28 +10,137 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   python:
-    name: python (lint + typecheck + test)
+    name: python (lint · typecheck · test)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: liftwork
+          POSTGRES_PASSWORD: liftwork
+          POSTGRES_DB: liftwork_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U liftwork"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      # Match conftest.py expectations.
+      LIFTWORK_DATABASE__URL: postgresql+asyncpg://liftwork:liftwork@localhost:5432/liftwork_test
+      LIFTWORK_REDIS__URL: redis://localhost:6379/0
+      LIFTWORK_JWT__SECRET: ci-test-secret-not-for-production-32-bytes-min-please
+      LIFTWORK_TELEMETRY__OTEL_ENABLED: "false"
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
-      - run: uv sync --all-packages --dev
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run mypy apps/api/src apps/worker/src packages/core/src
-      - run: uv run pytest -q
+          cache-dependency-glob: "uv.lock"
 
-  helm:
-    name: helm (lint + template)
+      - name: Sync dependencies
+        run: uv sync --all-packages --dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: mypy
+        run: uv run mypy packages/core/src apps/api/src apps/worker/src
+
+      - name: Migrate test database
+        run: uv run alembic upgrade head
+
+      - name: pytest
+        run: uv run pytest -q --maxfail=1
+
+  dashboard:
+    name: dashboard (typecheck · build)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/dashboard
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build production bundle
+        run: npm run build
+
+  helm:
+    name: helm (lint · template · render tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: azure/setup-helm@v4
         with:
           version: v3.16.2
-      - run: helm lint charts/liftwork
-      - run: helm template charts/liftwork > /tmp/rendered.yaml
+
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync deps (for chart-render pytest)
+        run: uv sync --all-packages --dev
+
+      - name: helm dep update
+        run: helm dep update charts/liftwork
+
+      - name: helm lint (with required values stubbed)
+        run: |
+          helm lint charts/liftwork \
+            --set secrets.jwtSecret=ci-test-secret-32-bytes-or-more-please-please-please \
+            --set externalDatabase.url=postgresql+asyncpg://x \
+            --set externalRedis.url=redis://x \
+            --set registry.host=registry.local
+
+      - name: helm template (full render with everything enabled)
+        run: |
+          helm template lw charts/liftwork --namespace lw \
+            --set secrets.jwtSecret=ci-test-secret-32-bytes-or-more-please-please-please \
+            --set postgresql.enabled=true \
+            --set postgresql.auth.password=ci \
+            --set redis.enabled=true \
+            --set registry.host=registry.local \
+            --set ingress.enabled=true \
+            --set serviceMonitor.enabled=true \
+            > /tmp/rendered.yaml
+          test -s /tmp/rendered.yaml
+
+      - name: Chart render assertions
+        run: uv run pytest charts/liftwork/tests/ -v

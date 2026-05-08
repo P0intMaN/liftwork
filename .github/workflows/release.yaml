@@ -1,0 +1,227 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write     # GitHub Release create
+  packages: write     # GHCR push (images + chart)
+  id-token: write     # cosign keyless signing (sigstore)
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ${{ github.repository_owner }}
+
+jobs:
+  # ------------------------------------------------------------------
+  # 1. Build + sign + push the three container images. Multi-arch.
+  # ------------------------------------------------------------------
+  images:
+    name: images (build · sign · push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            dockerfile: apps/api/Dockerfile
+            context: .
+          - name: worker
+            dockerfile: apps/worker/Dockerfile
+            context: .
+          - name: dashboard
+            dockerfile: apps/dashboard/Dockerfile
+            context: apps/dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/liftwork-${{ matrix.name }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build + push (multi-arch)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+          provenance: true
+          sbom: true
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          # Sign each tag's primary digest. cosign keyless uses
+          # GitHub OIDC — no key material to manage.
+          for tag in $TAGS; do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+  # ------------------------------------------------------------------
+  # 2. Package + push the Helm chart as an OCI artifact, then sign it.
+  # ------------------------------------------------------------------
+  chart:
+    name: helm chart (package · push · sign)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: images
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Login to GHCR for OCI push
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Pull subchart deps
+        run: helm dep update charts/liftwork
+
+      - name: Resolve version from tag
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Package chart
+        run: |
+          helm package charts/liftwork \
+            --version "${{ steps.version.outputs.value }}" \
+            --app-version "${{ steps.version.outputs.value }}" \
+            --destination ./dist
+
+      - name: Push to GHCR (OCI)
+        id: push
+        run: |
+          out=$(helm push ./dist/liftwork-${{ steps.version.outputs.value }}.tgz \
+            oci://ghcr.io/${{ env.OWNER }} 2>&1 | tee /dev/stderr)
+          digest=$(echo "$out" | awk '/Digest:/ {print $2}')
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign chart (keyless)
+        run: |
+          cosign sign --yes \
+            "ghcr.io/${{ env.OWNER }}/liftwork@${{ steps.push.outputs.digest }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: dist/*.tgz
+
+  # ------------------------------------------------------------------
+  # 3. Smoke-test the just-published artifacts in a fresh kind cluster.
+  # ------------------------------------------------------------------
+  smoke:
+    name: smoke test (kind install)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: chart
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: liftwork-smoke
+          wait: 300s
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Login (image pulls)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Resolve version
+        id: version
+        run: echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install released chart
+        run: |
+          helm install lw oci://ghcr.io/${{ env.OWNER }}/liftwork \
+            --version ${{ steps.version.outputs.value }} \
+            --namespace liftwork --create-namespace \
+            --set secrets.jwtSecret=smoke-test-secret-32-bytes-or-more-please-please \
+            --set postgresql.enabled=true --set postgresql.auth.password=smoke \
+            --set redis.enabled=true \
+            --set registry.host=registry.local \
+            --wait --timeout=10m
+
+      - name: Verify all three workloads ready
+        run: |
+          kubectl --namespace liftwork wait --for=condition=Available \
+            deploy/lw-api deploy/lw-dashboard --timeout=300s
+          # worker uses tcpSocket probe, no Available condition — check Ready replicas instead.
+          kubectl --namespace liftwork rollout status deploy/lw-worker --timeout=300s
+
+      - name: Hit /healthz via port-forward
+        run: |
+          kubectl --namespace liftwork port-forward svc/lw-api 7878:7878 &
+          PF_PID=$!
+          sleep 5
+          curl --fail --show-error --silent http://localhost:7878/healthz
+          kill $PF_PID
+
+      - name: Dump diagnostics on failure
+        if: failure()
+        run: |
+          kubectl --namespace liftwork get pods,svc,jobs -o wide
+          kubectl --namespace liftwork describe pods
+          kubectl --namespace liftwork logs --selector app.kubernetes.io/instance=lw \
+            --tail=200 --all-containers --prefix=true || true
+
+  # ------------------------------------------------------------------
+  # 4. Auto-generated GitHub Release with the chart attached.
+  # ------------------------------------------------------------------
+  github-release:
+    name: github release
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: smoke
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: ./dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*.tgz
+          fail_on_unmatched_files: true

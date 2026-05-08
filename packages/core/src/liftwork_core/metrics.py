@@ -23,25 +23,53 @@ from liftwork_core.telemetry import PROMETHEUS_REGISTRY
 # Bucket sets tuned to liftwork's actual ranges so p95/p99 are meaningful
 # rather than landing in the +Inf bucket.
 _DURATION_BUCKETS_SHORT = (
-    0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
+    0.005,
+    0.01,
+    0.025,
+    0.05,
+    0.1,
+    0.25,
+    0.5,
+    1,
+    2.5,
+    5,
+    10,
 )  # k8s API calls, registry pings, etc.
 
 _DURATION_BUCKETS_BUILD = (
-    1, 5, 10, 30, 60, 120, 300, 600, 1200, 1800,
+    1,
+    5,
+    10,
+    30,
+    60,
+    120,
+    300,
+    600,
+    1200,
+    1800,
 )  # builds: 1s → 30min cap
 
 _DURATION_BUCKETS_DEPLOY = (
-    0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600,
+    0.5,
+    1,
+    2.5,
+    5,
+    10,
+    30,
+    60,
+    120,
+    300,
+    600,
 )  # deploys: half-second → 10min cap
 
 _BYTE_BUCKETS_IMAGE = (
-    1_000_000,         # 1 MB
-    10_000_000,        # 10 MB
-    50_000_000,        # 50 MB
-    100_000_000,       # 100 MB
-    500_000_000,       # 500 MB
-    1_000_000_000,     # 1 GB
-    2_500_000_000,     # 2.5 GB
+    1_000_000,  # 1 MB
+    10_000_000,  # 10 MB
+    50_000_000,  # 50 MB
+    100_000_000,  # 100 MB
+    500_000_000,  # 500 MB
+    1_000_000_000,  # 1 GB
+    2_500_000_000,  # 2.5 GB
 )
 
 
@@ -270,5 +298,3 @@ def record_k8s_call(
     K8S_API_LATENCY.labels(verb=verb, resource=resource).observe(duration_seconds)
     if error_status is not None:
         K8S_API_ERRORS.labels(verb=verb, resource=resource, status=error_status).inc()
-
-

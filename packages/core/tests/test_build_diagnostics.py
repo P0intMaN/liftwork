@@ -113,10 +113,7 @@ def test_registry_auth_takes_precedence_over_network() -> None:
 
 
 def test_unrecognised_error_returns_none() -> None:
-    assert (
-        classify_build_error(error_text="npm ERR! code ELIFECYCLE\nnpm ERR! foo@1 build")
-        is None
-    )
+    assert classify_build_error(error_text="npm ERR! code ELIFECYCLE\nnpm ERR! foo@1 build") is None
 
 
 def test_empty_error_returns_none() -> None:
